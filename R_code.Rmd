@@ -1,0 +1,488 @@
+---
+title: "R-code for 'TITLE OF THE PAPER'"
+author: "AUTHORS OF THE PAPER"
+output: html_document
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+*In preparation*
+
+This document provides all the `R code` used in our paper. Both the Rmarkdown file and the data can be downloaded from the accompanying GitHub repository on (https://github.com/mottensmann/...) as a zip archive containing all the files. We recommend to download or clone this [GitHub repository](https://github.com/mottensmann/...) in order to access the documentation together with all the files that are needed to repeat analyses shown in this document. Just click on the link above and then on the green box `Clone or download`. In order to function properly, the same structure of folders must be kept. If you have any questions, don't hesitate to contact meinolf.ottensmann[at]web.de
+
+### Download packages and libraries
+
+In order to repeat analyses presented in this manuscript a number of packages that extend the functionalities of base `R` are required. These can be installed using the code shown below.
+
+```{r install, comment="install packages", eval=FALSE}
+install.packages("magrittr")
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("lme4")
+install.packages("lmerTest")
+install.packages("EnvStats")
+```
+
+```{r, comment="Load packages", message=FALSE}
+rm(list = ls())
+library(magrittr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(EnvStats)
+library(dplyr)
+```
+
+### `Load data`
+
+Raw are available in one single file that is read into the working memory below
+
+```{r read table, message=FALSE, warning=FALSE}
+## read data
+data <- readxl::read_xlsx("data/raw.xlsx") %>% as.data.frame()
+```
+
+For the analysis a few manipulations have to be applied first, including standardising predictor variables using mean-centering. 
+
+
+```{r}
+## coding infection as binomial variable
+data$Infection_binomial <- 
+  ifelse(data$Infection_intensity == 0, 0, 1) %>% 
+  as.factor()
+## mean-centering
+data$Age <- scale(data$Age_standardised)
+```
+
+### Test 1: *Heterophiles are significantly higher in infected individuals across species*
+
+```{r}
+heterophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Heterophiles_percent)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("Heterophiles [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+heterophiles_plot
+```
+
+
+```{r}
+lm(Heterophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 2: *Lymphocytes are significantly lower in infected individuals across species*
+
+```{r}
+lymphocytes_plot <- ggplot(data,
+                            aes(x = as.factor(Infection_binomial), y = Lymphocytes_percent)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("Lymphocytes [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+lymphocytes_plot
+
+# with(data, plot(Age, Heterophiles_percent)) marginal reduction with age
+```
+
+
+```{r}
+lm(Lymphocytes_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 3: *BA is significantly higher in infected individuals across species*
+
+```{r}
+BA_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = BA)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("BA [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+BA_plot
+
+# with(data, plot(Age, Heterophiles_percent)) marginal reduction with age
+```
+
+
+```{r}
+lm(BA ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 4: *AST is significantly higher in infected individuals across species*
+
+```{r}
+AST_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = AST)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("AST [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+AST_plot
+
+# with(data, plot(Age, Heterophiles_percent)) marginal reduction with age
+```
+
+
+```{r}
+lm(AST ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 5: *LDH is significantly higher in infected individuals across species*
+
+```{r}
+LDH_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = LDH)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("LDH [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+LDH_plot
+```
+
+```{r}
+lm(LDH ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 6: *Eosinophiles is significantly higher in infected individuals across species*
+
+```{r}
+Eosinophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Eosinophiles_percent)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("Eosinophiles [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+Eosinophiles_plot
+```
+
+```{r}
+lm(Eosinophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 7: *Monocytes do not differ between infeceted and uninfected individuals*
+
+```{r}
+Monocytes_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Monocytes_percent)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("Monocytes [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+Monocytes_plot
+```
+
+```{r}
+lm(Monocytes_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 8: *Basophiles do not differ between infeceted and uninfected individuals*
+
+```{r}
+Basophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Basophiles_percent)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("Basophiles [%]") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+Basophiles_plot
+```
+
+```{r}
+lm(Basophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+
+### Test 9: *AP do not differ between infeceted and uninfected individuals*
+
+```{r}
+AP_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = AP)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("AP") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+AP_plot
+```
+
+```{r}
+lm(AP ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+
+### Test 10: *gGT do not differ between infeceted and uninfected individuals*
+
+```{r}
+gGT_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = gGT)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("gGT") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+gGT_plot
+```
+
+```{r}
+lm(gGT ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+
+### Test 11: *CHE do not differ between infeceted and uninfected individuals*
+
+```{r}
+CHE_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = CHE)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("CHE") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+CHE_plot
+```
+
+```{r}
+lm(CHE ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+
+### Test 12: *GLDH do not differ between infeceted and uninfected individuals*
+
+```{r}
+GLDH_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = GLDH)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("GLDH") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+GLDH_plot
+```
+
+```{r}
+lm(GLDH ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+
+### Test 13: *CK do not differ between infeceted and uninfected individuals*
+
+```{r}
+CK_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = CK)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("GLDH") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+CK_plot
+```
+
+```{r}
+lm(CK ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+
+### Test 14: *ALB do not differ between infeceted and uninfected individuals*
+
+```{r}
+ALB_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = ALB)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("ALB") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+ALB_plot
+```
+
+```{r}
+lm(ALB ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+
+### Test 15: *TP do not differ between infeceted and uninfected individuals*
+
+```{r}
+TP_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = TP)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("TP") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+TP_plot
+```
+
+```{r}
+lm(TP ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 16: *Ca do not differ between infeceted and uninfected individuals*
+
+```{r}
+Ca_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Ca)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("Ca") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+Ca_plot
+```
+
+```{r}
+lm(Ca ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
+
+### Test 17: *P do not differ between infeceted and uninfected individuals*
+
+```{r}
+P_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = P)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.4) +
+  theme_classic() +
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        #strip.background = element_rect(fill = "white", colour = "white"),
+        #strip.text = element_text(colour = 'white'),
+        plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
+  ylab("P") +
+  xlab("Leucocytozoon infection") +
+  stat_n_text() +
+  facet_wrap(~Species) 
+P_plot
+```
+
+```{r}
+lm(P ~ Infection_binomial + Sex + Age + Species, data) %>% 
+summary()
+```
