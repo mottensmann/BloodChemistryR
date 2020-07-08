@@ -558,6 +558,7 @@ lda_plot <- ggplot(cbind(vars, lda.values$x),
   scale_color_brewer(type = "div", palette = "RdBu") +
   scale_fill_brewer(type = "div", palette = "RdBu")
 lda_plot
+<<<<<<< HEAD
 ```
 
 ### LDA: Buteo buteo details
@@ -592,5 +593,7 @@ lda_plot <- ggplot(cbind(vars, lda.values$x),
   ylab(paste0("LD1 (", round(r.sq[1] * 100, 2), "%)")) +
   theme(legend.position = "bottom") 
 lda_plot
+=======
+>>>>>>> 9be62d77df38dc42770ba14b916f5f6403c1c74b
 ```
 
