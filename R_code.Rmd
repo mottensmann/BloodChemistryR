@@ -560,3 +560,37 @@ lda_plot <- ggplot(cbind(vars, lda.values$x),
 lda_plot
 ```
 
+### LDA: Buteo buteo details
+
+```{r}
+vars <- data[,c("Species", "Leukocyte_count", "Lymphocytes_percent", "Heterophiles_percent", "Basophiles_percent", "Eosinophiles_percent",  "AP", "AST", "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB", "TP", "Infection_intensity")]
+
+## leave out Accipiter gentilis, to few samples
+vars <- filter(vars, Species %in% c("Buteo buteo"))
+vars$Infection_intensity[vars$Infection_intensity == 0] <- "uninfected"
+vars$Infection_intensity[vars$Infection_intensity %in% 1:2] <- "low"
+vars$Infection_intensity[vars$Infection_intensity %in% 3:4] <- "high"
+
+vars[["Species"]] <- paste0(vars[["Species"]],"---", vars[["Infection_intensity"]])
+vars <- subset(vars, select = -c(Infection_intensity))
+
+lda <- lda(as.factor(Species) ~ ., data = vars, prior = rep(1, length(unique(vars$Species)))/length(unique(vars$Species)))
+
+#Project data on linear discriminants
+lda.values <- predict(lda, vars[,-1])
+
+## variance explained
+r.sq <- (lda$svd^2/sum(lda$svd^2))
+
+#Plot the results
+lda_plot <- ggplot(cbind(vars, lda.values$x),
+                   aes(y = LD1, x = LD2, colour = Species)) + 
+  stat_ellipse(aes(fill = Species), geom = "polygon", alpha = .3) +
+  geom_point() +
+  theme_classic() +
+  xlab(paste0("LD2 (", round(r.sq[2] * 100, 2), "%)")) +
+  ylab(paste0("LD1 (", round(r.sq[1] * 100, 2), "%)")) +
+  theme(legend.position = "bottom") 
+lda_plot
+```
+
