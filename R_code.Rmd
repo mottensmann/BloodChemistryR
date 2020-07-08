@@ -28,6 +28,7 @@ install.packages("dplyr")
 install.packages("lme4")
 install.packages("lmerTest")
 install.packages("EnvStats")
+install.packages("MASS") # for LDA
 ```
 
 ```{r, comment="Load packages", message=FALSE}
@@ -38,6 +39,7 @@ library(lme4)
 library(lmerTest)
 library(EnvStats)
 library(dplyr)
+library(MASS)
 ```
 
 ### `Load data`
@@ -217,6 +219,8 @@ summary()
 ```
 
 ### Test 7: *Monocytes do not differ between infeceted and uninfected individuals*
+
+*Monocytes are invariant in buteo buteo*
 
 ```{r}
 Monocytes_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Monocytes_percent)) +
@@ -486,3 +490,73 @@ P_plot
 lm(P ~ Infection_binomial + Sex + Age + Species, data) %>% 
 summary()
 ```
+
+### LDA: Species discrimination
+
+Species are well disciminated by overall blood chemistry, while *Accipiter gentilis* samples show the highest within group variance.
+
+```{r}
+vars <- data[,c("Species", "Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent", "Heterophiles_percent", "Basophiles_percent", "Eosinophiles_percent",  "AP", "AST", "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB", "TP", "Infection_binomial")]
+
+lda <- lda(as.factor(Species) ~ ., data = vars, prior = rep(1, length(unique(vars$Species)))/length(unique(vars$Species)))
+
+#Project data on linear discriminants
+lda.values <- predict(lda, vars[,-1])
+
+## variance explained
+r.sq <- (lda$svd^2/sum(lda$svd^2))
+
+## visualise loadings
+# df.lda <- data.frame(varnames = rownames(coef(lda)), coef(lda))
+# rad <- length(unique(vars$Species))
+# df.lda$length <- with(df.lda, sqrt(LD1^2 + LD2^2))
+# df.lda$angle <- atan2(df.lda$LD1, df.lda$LD2)
+# df.lda$x_start <- df.lda$y_start <- 0
+# df.lda$x_end <- cos(df.lda$angle) * rad
+# df.lda$y_end <- sin(df.lda$angle) * rad
+
+#Plot the results
+lda_plot <- ggplot(cbind(vars, lda.values$x),
+                   aes(y = LD1, x = LD2, colour = Species)) + 
+  stat_ellipse(aes(fill = Species), geom = "polygon", alpha = .3) +
+  geom_point() +
+  theme_classic() +
+  xlab(paste0("LD2 (", round(r.sq[2] * 100, 2), "%)")) +
+  ylab(paste0("LD1 (", round(r.sq[1] * 100, 2), "%)")) +
+  theme(legend.position = "bottom") 
+lda_plot
+```
+
+### LDA: Species and infection status
+
+```{r}
+vars <- data[,c("Species", "Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent", "Heterophiles_percent", "Basophiles_percent", "Eosinophiles_percent",  "AP", "AST", "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB", "TP", "Infection_binomial")]
+
+## leave out Accipiter gentilis, to few samples
+vars <- filter(vars, Species %in% c("Buteo buteo", "Milvus milvus"))
+
+vars[["Species"]] <- paste0(vars[["Species"]],"-L", vars[["Infection_binomial"]])
+vars <- subset(vars, select = -c(Infection_binomial))
+
+lda <- lda(as.factor(Species) ~ ., data = vars, prior = rep(1, length(unique(vars$Species)))/length(unique(vars$Species)))
+
+#Project data on linear discriminants
+lda.values <- predict(lda, vars[,-1])
+
+## variance explained
+r.sq <- (lda$svd^2/sum(lda$svd^2))
+
+#Plot the results
+lda_plot <- ggplot(cbind(vars, lda.values$x),
+                   aes(y = LD1, x = LD2, colour = Species)) + 
+  stat_ellipse(aes(fill = Species), geom = "polygon", alpha = .3) +
+  geom_point() +
+  theme_classic() +
+  xlab(paste0("LD2 (", round(r.sq[2] * 100, 2), "%)")) +
+  ylab(paste0("LD1 (", round(r.sq[1] * 100, 2), "%)")) +
+  theme(legend.position = "bottom") +
+  scale_color_brewer(type = "div", palette = "RdBu") +
+  scale_fill_brewer(type = "div", palette = "RdBu")
+lda_plot
+```
+
