@@ -1,0 +1,1150 @@
+---
+title: "Blood Chemistry Analysis \n Buzzard, Goshawk and Red Kite"
+author: "Tony Rinaud"
+date: "03/03/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, message=F}
+library(ggplot2)
+library(ggsci)
+library(EnvStats)
+library(plotly)
+library(patchwork)
+library(RColorBrewer)
+library(chron)
+library(RVAideMemoire)
+
+# Routine clean-up upon start
+rm(list=ls())
+```
+
+
+```{r data, echo=F}
+setwd("C://Users/Tony/Documents/Phd Bielefeld/Data manip/Chemistry_blood/")
+
+chmbl=read.csv2("Chemistry_synlab_2020.csv", h=T, dec=".")
+
+```
+
+```{r str, echo=F}
+chmbl$Ring.no=factor(chmbl$Ring.no)
+chmbl$RNAseq=factor(chmbl$RNAseq)
+chmbl$Lprev=factor(chmbl$Lprev)
+chmbl$Alkalische.Phosphatase=as.numeric(chmbl$Alkalische.Phosphatase)
+chmbl$AST..GOT.=as.numeric(chmbl$AST..GOT.)
+chmbl$LDH=as.numeric(chmbl$LDH)
+chmbl$CK..NAC.=as.numeric(chmbl$CK..NAC.)
+chmbl$Gesamteiweiï=as.numeric(chmbl$Gesamteiweiï)
+chmbl$Date=chron(as.character(chmbl$Date),format="d/m/y")
+chmbl$PresLeuco=as.factor(chmbl$PresLeuco)
+
+chmbl=chmbl[order(chmbl$Your_ID,chmbl$Date),]
+chmbl=chmbl[!duplicated(chmbl$Ring.no),]
+```
+
+# Summary
+
+  * Goshawk has higher Creatine Kinase (CK), Aspartate aminotransferase (AST), Alkalische Phosphatase (AP) and Lactate deshydrogenase (LDH) than Buzzard and Red Kite.
+  * Buzzards show high AST and LDH and average CK when infected, indicative of liver cell damage.
+
+
+# Results blood chemistry
+
+## Gallensäuren: 
+
+### Comparison infected / non-infected
+
+**Common Buzzard**
+
+  * Significantly higher in infected nestlings than non-infected 
+  
+  * But no differences between classes of infection intensity
+
+```{r}
+
+# Comparison infected / non-infected birds
+
+# Two Sample t-test  
+#  
+#  data:  buzz_Gallensauren by buzz_PresLeuco  
+#  t = -2.5693, df = 65, p-value = 0.0125  
+#  alternative hypothesis: true difference in means is not equal to 0  
+#  95 percent confidence interval:  
+#   -14.018445  -1.756376  
+#  sample estimates:  
+#  mean in group 0 mean in group 1   
+#         24.81571        32.70312 
+
+
+# Comparison of classes of infection intensity
+
+# Permutation Analysis of Variance Table
+# 
+# Response: buzz$Gallensauren
+# 999 permutations
+#             Sum Sq Df Mean Sq F value Pr(>F)
+# buzz$Lprev  1118.9  4  279.73  1.7068  0.165
+# Residuals  10161.2 62  163.89 
+```
+
+```{r compmean gall buzz, echo=F}
+
+buzz=chmbl[chmbl$Species %in% "buzz",]
+
+# qqPlot(buzz$Gallensauren[buzz$Lprev %in% c(1,2,3,4)])
+# qqPlot(buzz$Gallensauren[buzz$Lprev %in% c(0)])
+# hist(buzz$Gallensauren[buzz$Lprev %in% c(1,2,3,4)])
+# hist(buzz$Gallensauren[buzz$Lprev %in% c(0)])
+
+# Homogeneity of variances
+
+# var.test(buzz$Gallensauren~buzz$PresLeuco)  # homogeneous variances 
+
+# Mean comparison
+
+# t.test(buzz$Gallensauren~buzz$PresLeuco, var.equal=T) # Difference between Infected non infected
+
+```
+
+**Goshawk**
+
+  Can't compare between non infected/infected Goshawk, two low sample sizes.
+
+```{r compmean gall gos, echo=F}
+
+gos=chmbl[chmbl$Species %in% "gos",]
+
+meansgall=aggregate(Gallensauren~Species, chmbl, mean)
+
+ggplot(chmbl)+
+  aes(Species, Gallensauren)+
+  geom_boxplot(aes(fill=Species))+
+  stat_n_text(text.box = 1)+
+  theme_minimal()+
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+
+  geom_label(data = meansgall, aes(label = round(Gallensauren,digits = 0), x=c(1.1,2.1,3.1), y = Gallensauren), size=2.9)
+
+```
+
+**Red Kite**
+
+  * Higher but non significant difference of Gallensauren in infected nestlings vs non-infected
+  * No difference between classes of infection intensity
+  
+```{r}
+
+# Comparison of infected and non-infected birds
+
+# Permutation Two Sample t-test  
+#  
+#  data:  rk_Gallensauren by rk_PresLeuco  
+#  999 permutations  
+#  t = -1.4334, p-value = 0.136  
+#  alternative hypothesis: true difference in means is not equal to 0   
+#  sample estimates:  
+#  **mean in group 0 mean in group 1**  
+#         **36.59412**        **46.79583** 
+
+# Comparison among classes of infection intensity 
+
+# Permutation Analysis of Variance Table
+# 
+# Response: rk$Gallensauren
+# 999 permutations
+#           Sum Sq Df Mean Sq F value Pr(>F)
+# rk$Lprev   957.6  3  319.18  0.8493  0.492
+# Residuals 9395.5 25  375.82
+```
+        
+```{r compmean gall rk, echo=F, message=F, warning=F}
+
+rk=chmbl[chmbl$Species %in% "rk",]
+
+# qqPlot(rk$Gallensauren[rk$Lprev %in% c(1,2,3,4)])
+# qqPlot(rk$Gallensauren[rk$Lprev %in% c(0)])
+# hist(rk$Gallensauren[rk$Lprev %in% c(1,2,3,4)])
+# hist(rk$Gallensauren[rk$Lprev %in% c(0)])
+
+# Homogeneity of variances
+
+# var.test(rk$Gallensauren~rk$PresLeuco)  # homogeneous variances 
+
+# Mean comparison
+
+# perm.t.test(rk$Gallensauren~rk$PresLeuco) # No difference between Infected non infected in Red Kite
+
+```
+
+## GLDH: 
+
+### Comparison infected / non-infected
+
+* Most of the samples are in the class <1.0: not possible to compare between groups
+
+## Creatine Kinase (CK) 
+
+**Common Buzzard**
+
+* Mean is way over 400 (significant, mean = 2282), the reference value.
+
+* No difference between infected / non infected
+
+```{r}
+
+# Comparison mean samples and theorical value (400) 
+
+# One Sample t-test
+# 
+# data:  buzz$CK..NAC.
+# t = 19.062, df = 66, p-value < 2.2e-16
+# alternative hypothesis: true mean is not equal to 400
+# 95 percent confidence interval:
+#  2085.001 2479.267
+# sample estimates:
+# mean of x 
+#  2282.134 
+
+# Comparison infected - non infected
+
+# Two Sample t-test  
+#    
+#  data:  buzz_CK..NAC. by buzz_PresLeuco  
+#  t = -0.50878, df = 65, p-value = 0.6126  
+#  alternative hypothesis: true difference in means is not equal to 0  
+#  95 percent confidence interval:  
+#   -498.1510  295.8706  
+#  sample estimates:  
+#  **mean in group 0 mean in group 1**  
+#         **2233.829**  **2334.969** 
+```
+
+```{r compmean ck buzz, echo=F}
+
+# Comparaison avec valeur théorique = 400 
+
+# t.test(buzz$CK..NAC.,mu=400)
+
+# qqPlot(buzz$CK..NAC.[buzz$Lprev %in% c(1,2,3,4)])
+# qqPlot(buzz$CK..NAC.[buzz$Lprev %in% c(0)])
+# hist(buzz$CK..NAC.[buzz$Lprev %in% c(1,2,3,4)])
+# hist(buzz$CK..NAC.[buzz$Lprev %in% c(0)])
+
+# Homogeneity of variances
+
+# var.test(buzz$CK..NAC.~buzz$PresLeuco)  # homogeneous variances 
+
+# Mean comparison
+
+# t.test(buzz$CK..NAC.~buzz$PresLeuco, var.equal=T) # No difference between Infected non infected
+
+```
+
+**Goshawk**
+
+* Same, but the 4 points are higher than Buzzard's and Red Kite's 
+
+* Ck higher in Goshawk than Buzzard (non-sign.) and Red Kite(significant, p=0.003). No differences between Buzzard and Goshawk.
+
+```{r compmean ck gos, echo=F}
+
+meanCK=aggregate(CK..NAC.~Species,chmbl,mean)
+
+ggplot(chmbl)+
+  aes(Species,CK..NAC.)+
+  geom_boxplot(aes(fill=Species))+
+  stat_n_text(text.box = 1)+
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+
+  geom_label(data = meanCK, aes(label = round(CK..NAC.,digits = 0), x=c(1.2,2.2,3.2), y = CK..NAC.), size=2.9)
+
+```
+
+```{r}
+# bartlett.test(chmbl$CK..NAC.~chmbl$Species)
+# 
+# perm.anova(chmbl$CK..NAC.~chmbl$Species)
+# 
+# pairwise.perm.t.test(chmbl$CK..NAC.,chmbl$Species)
+```
+
+**Red Kite**
+
+  * Over the reference, 400 (sign., mean rk around 1462)
+  
+  * No difference between infected and non infected nestlings
+
+```{r}
+
+# Comparaison avec valeur théorique = 400 
+
+# One Sample t-test
+# 
+# data:  rk$CK..NAC.
+# t = 9.7061, df = 28, p-value = 1.852e-10
+# alternative hypothesis: true mean is not equal to 400
+# 95 percent confidence interval:
+#  1238.172 1686.587
+# sample estimates:
+# mean of x 
+#  1462.379 
+
+# Comparison infected / non-infected birds
+
+# Two Sample t-test  
+#  
+#  data:  rk_CK..NAC. by rk_PresLeuco  
+#  t = 0.13984, df = 27, p-value = 0.8898  
+#  alternative hypothesis: true difference in means is not equal to 0  
+#  95 percent confidence interval:  
+#   -432.5551  495.8296  
+#  sample estimates:  
+#  **mean in group 0 mean in group 1**   
+#         **1475.471**        **1443.833**
+```
+        
+```{r compmean ck rk, echo=F}
+
+# t.test(rk$CK..NAC.,mu=400)
+
+# qqPlot(rk$CK..NAC.[rk$Lprev %in% c(1,2,3,4)])
+# qqPlot(rk$CK..NAC.[rk$Lprev %in% c(0)])
+# hist(rk$CK..NAC.[rk$Lprev %in% c(1,2,3,4)])
+# hist(rk$CK..NAC.[rk$Lprev %in% c(0)])
+
+# Homogeneity of variances
+
+# var.test(rk$CK..NAC.~rk$PresLeuco)  # homogeneous variances 
+
+# Mean comparison
+
+# t.test(rk$CK..NAC.~rk$PresLeuco, var.equal=T) # No difference between Infected non infected
+```
+
+## Aspartate aminotransferase (AST)
+
+**Common Buzzard**
+
+* Mean is within the range of reference (100-350) i.e 293.
+
+* Difference between infected / non infected AST
+
+```{r}
+
+# Comparison mean versus reference value (225) 
+
+# One Sample t-test
+# 
+# data:  buzz$AST..GOT.
+# t = 3.6706, df = 66, p-value = 0.0004858
+# alternative hypothesis: true mean is not equal to 225
+# 95 percent confidence interval:
+#  256.2095 330.6562
+# sample estimates:
+# mean of x 
+#  293.4328
+
+# Comparison infect / non-infected birds
+
+# Permutation Two Sample t-test
+# 
+# data:  buzz_AST..GOT. by buzz_PresLeuco  
+# 999 permutations  
+# t = -3.1274, p-value = 0.004  
+# alternative hypothesis: true difference in means is not equal to 0  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#        **241.0571**        **350.7188** 
+```
+
+```{r compmean AST buzz, echo=F}
+
+## Comparaison avec valeur théorique = 400
+
+# t.test(buzz$AST..GOT.,mu=mean(c(100,350)))
+# 
+# qqPlot(buzz$AST..GOT.[buzz$Lprev %in% c(1,2,3,4)])
+# qqPlot(buzz$AST..GOT.[buzz$Lprev %in% c(0)])
+# hist(buzz$AST..GOT.[buzz$Lprev %in% c(1,2,3,4)])
+# hist(buzz$AST..GOT.[buzz$Lprev %in% c(0)])
+# 
+# ## Homogeneity of variances
+# 
+# var.test(buzz$AST..GOT.~buzz$PresLeuco)  # homogeneous variances
+# 
+# ## Mean comparison
+# 
+# perm.t.test(buzz$AST..GOT.~buzz$PresLeuco) # No difference between Infected non infected
+
+```
+
+**Goshawk**
+
+* Same, but those 4 points are higher than Buzzard's and Red Kite's
+
+* Difference between Goshawk and Buzzard; Red kite and Buzzard. But not between Red kite and Goshawk.
+
+```{r}
+# Pairwise comparisons using permutation t tests 
+# 
+# data:  chmbl$AST..GOT. and chmbl$Species
+# 999 permutations 
+# 
+#     buzz  gos  
+# gos 0.087 -             # p-value
+# rk  0.087 0.168         # p-values
+# 
+# P value adjustment method: fdr 
+```
+
+```{r compmean AST gos, echo=F}
+
+meansAST <- aggregate(AST..GOT. ~  Species, chmbl, mean)
+
+ggplot(chmbl)+
+  aes(Species,AST..GOT.)+
+  geom_boxplot(aes(fill=Species))+
+  stat_n_text(text.box = 1)+
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+
+  geom_label(data = meansAST, aes(label = round(AST..GOT.,digits = 0), x=c(1.1,2.1,3.1), y = AST..GOT.), size=2.9)
+
+```
+
+```{r, echo=F}
+# bartlett.test(chmbl$AST..GOT.~chmbl$Species)
+# 
+# perm.anova(chmbl$AST..GOT.~chmbl$Species)
+# 
+# pairwise.perm.t.test(chmbl$AST..GOT.,chmbl$Species)
+```
+
+**Red Kite**
+
+  * Over 400 (mean around 1450)
+  
+  * No difference between infected and non infected nestlings
+
+```{r}
+#  Welch Two Sample t-test  
+# 
+# data:  rk_AST..GOT. by rk_PresLeuco  
+# t = -0.69244, df = 15.128, p-value = 0.4992  
+# alternative hypothesis: true difference in means is not equal to 0  
+# 95 percent confidence interval:  
+#  -156.02373   79.46491  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#        **350.4706**        **388.7500** 
+```
+  
+  
+```{r compmean AST rk, echo=F}
+# qqPlot(log(rk$AST..GOT.[rk$Lprev %in% c(1,2,3,4)]))
+# qqPlot(log(rk$AST..GOT.[rk$Lprev %in% c(0)]))
+# hist(log(rk$AST..GOT.[rk$Lprev %in% c(1,2,3,4)]))
+# hist(log(rk$AST..GOT.[rk$Lprev %in% c(0)]))
+# 
+# # Homogeneity of variances
+# 
+# var.test(log(rk$AST..GOT.)~rk$PresLeuco)  # homogeneous variances
+# 
+# # Mean comparison
+# 
+# t.test(rk$AST..GOT.~rk$PresLeuco, var.equal=F) # No difference between Infected non infected
+```
+
+## Lactate Deshydrogenase (LDH)
+
+**Common Buzzard**
+
+* Mean above the range of reference (150-450) i.e 1003.418.
+
+* Difference between infected / non infected
+
+```{r}
+
+# Comparison rk LDH mean and reference value = mean(log(value)) to correct for normality and heterogeneity of variances 
+
+# One Sample t-test
+# 
+# data:  log(buzz$LDH)
+# t = 17.546, df = 66, p-value < 2.2e-16
+# alternative hypothesis: true mean is not equal to 5.703782
+# 95 percent confidence interval:
+#  6.650974 6.894209
+# sample estimates:
+# mean of x 
+#  6.772592 
+ 
+# Comparison Infected / non-infected
+ 
+# Welch Two Sample t-test
+# 
+# data:  log(buzz_LDH) by buzz_PresLeuco  
+# t = -3.6083, df = 61.112, p-value = 0.0006222   
+# alternative hypothesis: true difference in means is not equal to 0  
+# 95 percent confidence interval:  
+#  -0.6328719 -0.1815562  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#        **6.578102**        **6.985316**
+```
+       
+       ==> AST and LDH higher and CK same as non-infected in infected: indicative of liver cell damage (cf In Practice March 2015 Vol 37)
+
+
+```{r compmean LDH buzz, echo=F}
+
+## Comparaison avec valeur théorique = 400
+# 
+# t.test(log(buzz$LDH),mu=log(mean(c(150,450))))
+# 
+# qqPlot(log(buzz$LDH[buzz$Lprev %in% c(1,2,3,4)]))
+# qqPlot(log(buzz$LDH[buzz$Lprev %in% c(0)]))
+# hist(log(buzz$LDH[buzz$Lprev %in% c(1,2,3,4)]))
+# hist(log(buzz$LDH[buzz$Lprev %in% c(0)]))
+# 
+# ## Homogeneity of variances
+# 
+# var.test(log(buzz$LDH)~buzz$PresLeuco)  # homogeneous variances
+# 
+# ## Mean comparison
+# 
+# t.test(log(buzz$LDH)~buzz$PresLeuco) # Difference between Infected non infected
+
+```
+
+**Goshawk**
+
+* Same, but those 4 points are higher than Buzzard's and Red Kite's 
+
+* All different between each species with Goshawk being higher than two others
+
+```{r}
+# Pairwise comparisons using permutation t tests 
+# 
+# data:  chmbl$LDH and chmbl$Species
+# 999 permutations 
+# 
+#     buzz  gos  
+# gos 0.027 -    
+# rk  0.042 0.006
+# 
+# P value adjustment method: fdr 
+```
+
+
+```{r compmean LDH gos, echo=F}
+
+meansLDH <- aggregate(LDH ~  Species, chmbl, mean)
+
+ggplot(chmbl)+
+  aes(Species,LDH)+
+  geom_boxplot(aes(fill=Species))+
+  stat_n_text(text.box = 1)+
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+
+  geom_label(data = meansLDH, aes(label = round(LDH,digits = 0), x=c(1.20,2.20,3.20), y = LDH + 50))
+
+```
+
+```{r, echo=F}
+
+# bartlett.test(chmbl$LDH~chmbl$Species)
+# 
+# t.test(c(buzz$LDH,rk$LDH)~c(buzz$Species,rk$Species))
+# 
+# pairwise.perm.t.test(chmbl$LDH,chmbl$Species)
+
+```
+
+**Red Kite**
+
+  * Over 400 (mean around 1450)
+  
+  * No difference between infected and non infected nestlings
+ 
+```{r}
+#  Welch Two Sample t-test  
+# 
+# data:  rk_LDH by rk_PresLeuco  
+# t = 1.1278, df = 25.35, p-value = 0.27  
+# alternative hypothesis: true difference in means is not equal to 0  
+# 95 percent confidence interval:  
+#  -110.3592  377.9278  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#        **804.1176**        **670.3333**
+```
+ 
+  
+```{r compmean LDH rk, echo=F}
+# qqPlot(rk$LDH[rk$Lprev %in% c(1,2,3,4)])
+# qqPlot(rk$LDH[rk$Lprev %in% c(0)])
+# hist(rk$LDH[rk$Lprev %in% c(1,2,3,4)])
+# hist(rk$LDH[rk$Lprev %in% c(0)])
+# 
+# # Homogeneity of variances
+# 
+# var.test(rk$LDH~rk$PresLeuco)  # homogeneous variances
+# 
+# # Mean comparison
+# 
+# t.test(rk$LDH~rk$PresLeuco, var.equal=F) # No difference between Infected non infected
+```
+
+## Alkalische Phosphatase (AP)
+
+**Common Buzzard**
+
+* Mean above the range of reference (10-250) i.e 413.
+
+* No difference between infected / non infected
+
+```{r}
+
+# Comparison mean versus reference value (130)
+
+# One Sample t-test
+# 
+# data:  buzz$Alkalische.Phosphatase
+# t = 14.67, df = 66, p-value < 2.2e-16
+# alternative hypothesis: true mean is not equal to 130
+# 95 percent confidence interval:
+#  374.1090 451.0253
+# sample estimates:
+# mean of x 
+#  412.5672 
+
+# Comparison infected / non-infected nestlings
+
+# Welch Two Sample t-test
+# 
+# data:  buzz$Alkalische.Phosphatase by buzz$PresLeuco
+# t = 1.3397, df = 61.44, p-value = 0.1853
+# alternative hypothesis: true difference in means is not equal to 0
+# 95 percent confidence interval:
+#  -24.92057 126.15629
+# sample estimates:
+# mean in group 0 mean in group 1 
+#        436.7429        386.1250
+```
+
+
+```{r compmean Alkalische.Phosphatase buzz, echo=F}
+
+## Comparaison avec valeur théorique = 130
+
+# t.test(buzz$Alkalische.Phosphatase,mu=mean(c(10,250)))
+# 
+# qqPlot(buzz$Alkalische.Phosphatase[buzz$Lprev %in% c(1,2,3,4)])
+# qqPlot(buzz$Alkalische.Phosphatase[buzz$Lprev %in% c(0)])
+# hist(buzz$Alkalische.Phosphatase[buzz$Lprev %in% c(1,2,3,4)])
+# hist(buzz$Alkalische.Phosphatase[buzz$Lprev %in% c(0)])
+# 
+# ## Homogeneity of variances
+# 
+# var.test(buzz$Alkalische.Phosphatase~buzz$PresLeuco)  # homogeneous variances
+# 
+# ## Mean comparison
+# 
+# t.test(buzz$Alkalische.Phosphatase~buzz$PresLeuco) # Difference between Infected non infected
+
+```
+
+**Goshawk**
+
+Same, but the 4 points are higher than Buzzard's and Red Kite's 
+
+```{r compmean AP gos, echo=F}
+
+meanAP=aggregate(Alkalische.Phosphatase~Species, chmbl, mean)
+
+ggplot(chmbl)+
+  aes(Species,Alkalische.Phosphatase)+
+  geom_boxplot(aes(fill=Species))+
+  stat_n_text(text.box = 1)+
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+
+  geom_label(data = meanAP, aes(label = round(Alkalische.Phosphatase,digits = 0), x=c(1.20,2.20,3.20), y = Alkalische.Phosphatase + 50))
+
+```
+
+**Red Kite**
+
+  * Over 250 (mean around 356)
+  
+  * No difference between infected and non infected nestlings
+
+```{r}
+# Comparison mean rk versus reference value (130)
+
+# One Sample t-test
+# 
+# data:  rk$Alkalische.Phosphatase
+# t = 15.8, df = 28, p-value = 1.769e-15
+# alternative hypothesis: true mean is not equal to 130
+# 95 percent confidence interval:
+#  327.4496 386.2745
+# sample estimates:
+# mean of x 
+#  356.8621 
+
+# Comparison infected / non-infected nestlings
+ 
+#   Welch Two Sample t-test  
+# 
+# data:  rk_Alkalische.Phosphatase by rk_PresLeuco   
+# t = 1.6996, df = 26.044, p-value = 0.1011  
+# alternative hypothesis: true difference in means is not equal to 0  
+# 95 percent confidence interval:  
+#  -9.233957 97.469251  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#        **375.1176**        **331.0000**
+```
+
+
+```{r compmean AP rk, echo=F}
+
+# t.test(rk$Alkalische.Phosphatase,mu=mean(c(10,250)))
+
+# qqPlot(rk$Alkalische.Phosphatase[rk$Lprev %in% c(1,2,3,4)])
+# qqPlot(rk$Alkalische.Phosphatase[rk$Lprev %in% c(0)])
+# hist(rk$Alkalische.Phosphatase[rk$Lprev %in% c(1,2,3,4)])
+# hist(rk$Alkalische.Phosphatase[rk$Lprev %in% c(0)])
+# 
+# # Homogeneity of variances
+# 
+# var.test(rk$Alkalische.Phosphatase~rk$PresLeuco)  # homogeneous variances
+# 
+# # Mean comparison
+# 
+# t.test(rk$Alkalische.Phosphatase~rk$PresLeuco, var.equal=F) # No difference between Infected non infected
+```
+
+## Gamma glutamyl transferase (g.GT)
+
+**Common Buzzard**
+
+* No difference between infected / non infected or between classes of infection
+
+```{r}
+# Comparison classes of infection intensity
+
+# Permutation Analysis of Variance Table
+# 
+# Response: 1/log(buzz$g.GT)
+# 999 permutations
+#             Sum Sq Df   Mean Sq F value Pr(>F)
+# buzz$Lprev 0.03531  4 0.0088282  0.6089  0.672
+# Residuals  0.89888 62 0.0144980
+
+# Comparison infected / non-infected
+
+# Permutation Two Sample t-test  
+# 
+# data:  1/log(buzz_g.GT) by buzz_PresLeuco  
+# 999 permutations  
+# t = 0.2415, p-value = 0.828  
+# alternative hypothesis: true difference in means is not equal to 0  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#       **0.5586918**      **0.5516137** 
+```
+
+
+```{r compmean g.GT buzz, echo=F}
+
+## Comparaison avec valeur théorique = 400
+
+# qqPlot(1/buzz$g.GT[buzz$Lprev %in% c(1,2,3,4)])
+# qqPlot(1/buzz$g.GT[buzz$Lprev %in% c(0)])
+# hist(1/log(buzz$g.GT[buzz$Lprev %in% c(1,2,3,4)]))
+# hist(1/log(buzz$g.GT[buzz$Lprev %in% 0]))
+# 
+# ## Homogeneity of variances
+# 
+# var.test(1/log(buzz$g.GT)~buzz$PresLeuco)  # homogeneous variances
+# 
+# ## Mean comparison
+# 
+# perm.t.test(1/log(buzz$g.GT)~buzz$PresLeuco) # No difference between Infected non infected
+
+```
+
+**Goshawk**
+
+Same, but the 4 points are lower than Buzzard's and Red Kite's 
+
+```{r compmean g.GT gos, echo=F}
+
+meansgGT=aggregate(g.GT~Species, chmbl, mean)
+
+ggplot(chmbl)+
+  aes(Species,g.GT)+
+  geom_boxplot(aes(fill=Species))+
+  stat_n_text(text.box = 1)+
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+
+  geom_label(data = meansgGT, aes(label = round(g.GT,digits = 1), x=c(1.20,2.20,3.20), y = g.GT))
+
+```
+
+**Red Kite**
+  
+  * No difference between infected and non infected nestlings and classes of infection
+  
+```{r}
+
+# Comparison of classes of infection
+
+# Permutation Analysis of Variance Table
+# 
+# Response: 1/log(rk$g.GT)
+# 999 permutations
+#            Sum Sq Df  Mean Sq F value Pr(>F)
+# rk$Lprev  0.10837  3 0.036124  1.9579  0.103
+# Residuals 0.46126 25 0.018450
+
+# Comparison infected / non-infected nestlings
+
+# Permutation Two Sample t-test  
+# 
+# data:  1/rk_g.GT by rk_PresLeuco  
+# 999 permutations  
+# t = 1.7234, p-value = 0.106  
+# alternative hypothesis: true difference in means is not equal to 0  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#       **0.1928359**       **0.1461826**
+```
+
+
+```{r compmean g.GT rk, echo=F}
+# qqPlot(1/rk$g.GT[rk$Lprev %in% c(1,2,3,4)])
+# qqPlot(1/rk$g.GT[rk$Lprev %in% c(0)])
+# hist(1/rk$g.GT[rk$Lprev %in% c(1,2,3,4)])
+# hist(1/rk$g.GT[rk$Lprev %in% c(0)])
+# 
+# # Homogeneity of variances
+# 
+# var.test(1/rk$g.GT~rk$PresLeuco)  # homogeneous variances
+# 
+# # Mean comparison
+# 
+# perm.t.test(1/rk$g.GT~rk$PresLeuco) # No difference between Infected non infected
+```
+
+## Albumin
+
+* Could biased by heparin tubes...
+
+**Common Buzzard**
+
+* No difference between infected / non infected
+
+```{r}
+# Two Sample t-test  
+# 
+# data:  buzz_Albumin by buzz_PresLeuco  
+# t = -0.47737, df = 65, p-value = 0.6347  
+# alternative hypothesis: true difference in means is not equal to 0  
+# 95 percent confidence interval:  
+#  -1.3523823  0.8305966  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#        **9.582857**        **9.843750** 
+```
+
+  
+
+```{r compmean Albumin buzz, echo=F}
+
+## Comparaison avec valeur théorique = 400
+
+# qqPlot(buzz$Albumin[buzz$Lprev %in% c(1,2,3,4)])
+# qqPlot(buzz$Albumin[buzz$Lprev %in% c(0)])
+# hist(buzz$Albumin[buzz$Lprev %in% c(1,2,3,4)])
+# hist(buzz$Albumin[buzz$Lprev %in% 0])
+# 
+# ## Homogeneity of variances
+# 
+# var.test(buzz$Albumin~buzz$PresLeuco)  # homogeneous variances
+# 
+# ## Mean comparison
+# 
+# t.test(buzz$Albumin~buzz$PresLeuco, var.equal=T) # Difference between Infected non infected
+
+```
+
+**Goshawk**
+
+Same, but the 4 points are higher (but spread) than Buzzard's and Red Kite's 
+
+```{r compmean Albumin gos, echo=F}
+
+meansalb=aggregate(Albumin~Species,chmbl,mean)
+
+ggplot(chmbl)+
+  aes(Species,Albumin)+
+  geom_boxplot(aes(fill=Species))+
+  stat_n_text(text.box = 1)+
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+
+  geom_label(data = meansalb, aes(label = round(Albumin,digits = 1), x=c(1.20,2.20,3.20), y = Albumin))
+
+```
+
+**Red Kite**
+  
+  * No difference between infected and non infected nestlings
+
+```{r}
+# Two Sample t-test
+# data:  rk$Albumin by rk$PresLeuco  
+# t = 1.28, df = 27, p-value = 0.2114  
+# alternative hypothesis: true difference in means is not equal to 0  
+# 95 percent confidence interval:  
+#  -0.8252831  3.5625380  
+# sample estimates:  
+# **mean in group 0 mean in group 1**   
+#        **12.03529**        **10.66667**
+```
+
+   
+
+```{r compmean Albumin rk, echo=F}
+
+# qqPlot(rk$Albumin[rk$Lprev %in% c(1,2,3,4)])
+# qqPlot(rk$Albumin[rk$Lprev %in% c(0)])
+# hist(rk$Albumin[rk$Lprev %in% c(1,2,3,4)])
+# hist(rk$Albumin[rk$Lprev %in% c(0)])
+# 
+# # Homogeneity of variances
+# 
+# var.test(rk$Albumin~rk$PresLeuco)  # homogeneous variances
+# 
+# # Mean comparison
+# 
+# t.test(rk$Albumin~rk$PresLeuco, var.equal=T) # No difference between Infected non infected
+```
+
+# PCA
+
+```{r}
+
+library(ade4)
+library(ggcorrplot)
+library(vegan)
+require(FactoMineR)
+require(factoextra)
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(MASS)
+require(reshape2)
+require(cowplot)
+library(patchwork)
+library(EnvStats)
+library(ggrepel)
+
+setwd("C://Users/Tony/Documents/Phd Bielefeld/Data manip/Chemistry_blood/")
+
+bloody=read.csv2('raw_07.07.20.csv', h=T, dec=',')
+
+# Infection classes No / Low / High Infection
+
+bloody$infectionclass=NA
+
+for (i in 1:length(bloody$Infection_intensity)){
+  if(bloody$Infection_intensity[i]==0){bloody$infectionclass[i]="No infection"}
+  if(bloody$Infection_intensity[i] %in% c(1,2)){bloody$infectionclass[i]="Low infection"}
+  if(bloody$Infection_intensity[i] %in% c(3,4)){bloody$infectionclass[i]="High infection"}
+} 
+
+bloodypca=bloody[,c(10:16,19:28)]
+
+bloodypca=scale(bloodypca)
+
+bloodypca=na.omit(bloodypca)
+
+# Correlation plot between explanatory variables
+
+ggcorrplot(cor(bloodypca), p.mat = cor_pmat(bloodypca), hc.order=TRUE, type='lower')
+
+# Function circular plot
+
+circleFun <- function(center = c(0,0),diameter = 1, npoints = 100){
+  r = diameter / 2
+  tt <- seq(0,2*pi,length.out = npoints)
+  xx <- center[1] + r * cos(tt)
+  yy <- center[2] + r * sin(tt)
+  return(data.frame(x = xx, y = yy))
+}
+
+circ <- circleFun(c(0,0),2,npoints = 500)
+
+# PCA  (cf https://tem11010.github.io/Plotting-PCAs/)
+
+PCAblood=PCA(bloodypca)
+
+plot.PCA(PCAblood)
+
+pc1=unlist(PCAblood$ind$coord[, 1], recursive = T,use.names = T)
+pc2=unlist(PCAblood$ind$coord[, 2], recursive = T,use.names = T)
+
+coords=data.frame(pc1,pc2)
+
+pca.vars <- PCAblood$var$coord %>% data.frame
+
+pca.vars$vars <- rownames(pca.vars)
+
+pca.vars.m <- melt(pca.vars, id.vars = "vars")
+
+# Plot PCA variables correlation
+
+vars.p <-  ggplot() +
+               geom_path(data = circ,aes(x,y), lty = 2, color = "grey", alpha = 0.7)+
+               geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9)+
+               geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9)+
+               geom_segment(data = pca.vars, aes(x = 0, xend = Dim.1, y = 0, yend = Dim.2),
+                            arrow = arrow(length = unit(0.025, "npc"), type = "open"), 
+                            lwd = 1)+ 
+              geom_text_repel(data = pca.vars, 
+                        aes(x = Dim.1*1.15, y =  Dim.2*1.15, 
+                            label = c("Leukocyte_count","Lymphocytes_percent","Monocytes_percent","Heterophiles_percent","H_L_ratio","Basophiles_percent","Eosinophiles_percent","AP","AST","gGT","CHE","GLDH","BA","LDH","CK","ALB","TP")), 
+                            check_overlap = F, size = 5)+
+              xlab("PC 1")+ 
+              ylab("PC2")+
+              coord_equal()+
+              theme_minimal()+
+              theme(panel.grid = element_blank(), 
+                    panel.border = element_rect(fill= "transparent"))
+
+vars.p
+
+# Plot PCA individual with species labels
+
+indplot=ggplot(data=coords, aes(x = pc1, y = pc2, color=bloody$Species))+
+  geom_point(color='black',size=4.5)+
+  geom_point(size=4)+
+  labs(x="PC1 (16.89%)", y="PC2 (14.98%)",color = "Species")+
+  geom_hline(yintercept = 0, lty = 2)+
+  geom_vline(xintercept = 0, lty = 2)+
+  scale_color_manual(values=c("#427EF6", "#7C3918", "#FF9100"))+
+  theme_classic()+
+  theme(legend.position = "bottom", legend.text = element_text(size=12),axis.title=element_text(size=14), axis.text=element_text(size=12), plot.title = element_text(hjust = 0.5, face="bold"), panel.border = element_rect(fill= "transparent"))+
+  stat_ellipse(geom="polygon", aes(fill = bloody$Species),alpha = 0.2, show.legend = FALSE, level = 0.95)
+
+########################
+# Plot PCA individuals with infection intensity labels 
+
+indinfplot=ggplot(data=coords, aes(x = pc1, y = pc2, color=as.factor(bloody$infectionclass))) +
+  geom_point(color='black',size=4.5)+
+  geom_point(size=4)+
+  labs(x="PC1 (16.89%)", y="PC2 (14.98%)",color = "Infection intensity")+
+  geom_hline(yintercept = 0, lty = 2)+
+  geom_vline(xintercept = 0, lty = 2)+
+  scale_color_manual(values=c("#A50F15","#FB6A4A","#FCAE91"))+
+  theme_classic()+
+  theme(legend.position = "bottom", legend.text = element_text(size=12),axis.title=element_text(size=14), axis.text=element_text(size=12), plot.title = element_text(hjust = 0.5, face="bold"), panel.border = element_rect(fill= "transparent"))+
+  stat_ellipse(geom="polygon", aes(color = as.factor(bloody$infectionclass)), alpha = 0.05, show.legend = FALSE, level = 0.95, size=0.7)
+
+indplot/indinfplot|vars.p + plot_layout(ncol=1)
+
+```
+
+
+# LDA
+
+```{r}
+
+#LDA constrained by Species
+
+qqPlot(bloodypca[,1])
+
+anova(betadisper(dist(bloodypca),bloody$Species))
+
+ldaSpecies=lda(bloodypca, bloody$Species)   #  CV=T ajout script Olivier
+
+#tableclass=base::table(catptPGR, ldaPGR$class)
+
+MVA.cv(bloodypca, bloody$Species,model="LDA")
+
+```
+
+```{r}
+# Group means:
+#                      Leukocyte_count Lymphocytes_percent Monocytes_percent
+# Y.Milvus milvus           -0.1013353           0.1087629        -0.9984180
+# Y.Accipiter gentilis      -0.2259058           0.1487041        -0.4635512
+# Y.Buteo buteo              0.4489071          -0.3060109         1.1187630
+#                      Heterophiles_percent  H_L_ratio Basophiles_percent
+# Y.Milvus milvus                -0.4310962 -0.2182354         0.25040583
+# Y.Accipiter gentilis           -0.2565877 -0.2208657        -0.09105667
+# Y.Buteo buteo                   0.5888760  0.4686820         0.10812979
+#                      Eosinophiles_percent          AP        AST        gGT        CHE
+# Y.Milvus milvus                 0.4502106  1.18532884  1.4004485  0.1677907  0.7358960
+# Y.Accipiter gentilis            0.1157404 -0.03055676 -0.3762194 -0.1045012  0.3663715
+# Y.Buteo buteo                  -0.3295659 -0.23903828  0.3552992  0.1539921 -0.8709206
+#                             GLDH         BA         LDH         CK        ALB
+# Y.Milvus milvus       0.61803236 -0.2333693  1.88885581  1.2406125  0.9079120
+# Y.Accipiter gentilis -0.02621955 -0.2496934 -0.07435103  0.1732512 -0.2695516
+# Y.Buteo buteo        -0.10534642  0.5265174 -0.33280578 -0.6349992  0.2784312
+#                              TP
+# Y.Milvus milvus       0.8917281
+# Y.Accipiter gentilis -0.2928062
+# Y.Buteo buteo         0.3260797
+
+``` 
+```{r}
+par(mfrow=c(1,2))
+MVA.plot(ldaSpecies,fac=bloody$Species,xlab="Axis 1", ylab="Axis 2", col=c("#427EF6", "#7C3918", "#FF9100"),legend=F, legend.cex=0.5, legend.pos="topleft", legend.lab=c("Accipiter gentilis", "Buteo buteo","Milvus milvus"))
+MVA.plot(ldaSpecies,"corr", xlab="Axis 1", ylab="Axis 2")
+
+#labels=c("Response\nrate","Latency", "Number\n songs","Score"))
+
+# mod=lm(as.matrix(bvPGR)~catptPGR)
+# 
+# plotresid(mod)
+# 
+# Manova(mod, test.statistic="Wilks")
+# 
+# summary(mod)
+
+```
+
+```{r}
+
+#LDA constrained by Infection class
+
+qqPlot(bloodypca[,1])
+
+anova(betadisper(dist(bloodypca),bloody$infectionclass))
+
+ldaInfclass=lda(bloodypca, bloody$infectionclass)   #  CV=T ajout script Olivier
+
+#tableclass=base::table(catptPGR, ldaPGR$class)
+
+# MVA.cv(bloodypca, bloody$infectionclass,model="LDA")
+
+par(mfrow=c(1,2))
+MVA.plot(ldaInfclass,fac=bloody$infectionclass,xlab="Axis 1", ylab="Axis 2", col=c("#427EF6", "#7C3918", "#FF9100"),legend=F, legend.cex=0.9, legend.pos="topleft", legend.lab=c("High Infection", "Low Infection","No Infection"))
+MVA.plot(ldaInfclass,"corr", xlab="Axis 1", ylab="Axis 2")
+
+# mod=lm(as.matrix(bvPGR)~catptPGR)
+# 
+# plotresid(mod)
+# 
+# Manova(mod, test.statistic="Wilks")
+# 
+# summary(mod)
+```
+
