@@ -17,32 +17,55 @@ knitr::opts_chunk$set(echo = TRUE)
 
 This document provides all the `R code` used in our paper. Both the Rmarkdown file and the data can be downloaded from the accompanying GitHub repository on (https://github.com/mottensmann/...) as a zip archive containing all the files. We recommend to download or clone this [GitHub repository](https://github.com/mottensmann/...) in order to access the documentation together with all the files that are needed to repeat analyses shown in this document. Just click on the link above and then on the green box `Clone or download`. In order to function properly, the same structure of folders must be kept. If you have any questions, don't hesitate to contact meinolf.ottensmann[at]web.de
 
-### Download packages and libraries
-
 In order to repeat analyses presented in this manuscript a number of packages that extend the functionalities of base `R` are required. These can be installed using the code shown below.
 
 ```{r install, comment="install packages", eval=FALSE}
-install.packages("magrittr")
-install.packages("ggplot2")
-install.packages("dplyr")
-install.packages("lme4")
-install.packages("lmerTest")
+install.packages("ade4")
+install.packages("chron")
+install.packages("cowplot")
+install.packages("factoextra")
+install.packages("FactoMineR")
 install.packages("EnvStats")
-install.packages("MASS") # for LDA
+install.packages("ggcorrplot")
+install.packages("ggrepel")
+install.packages("ggsci")
+install.packages("magrittr")
+install.packages("MASS")
+install.packages("patchwork")
+install.packages("RColorBrewer")
+install.packages("readxl")
+install.packages("reshape2")
+install.packages("RVAideMemoire")
+install.packages("tidyverse")
+install.packages("vegan")
 ```
 
-```{r, comment="Load packages", message=FALSE}
+Afterwards, make these packages available with the `library` function
+
+```{r, comment="Load packages", message=FALSE, warning=FALSE}
 rm(list = ls())
-library(magrittr)
-library(ggplot2)
-library(lme4)
-library(lmerTest)
+library(ade4)
+library(chron)
+library(corrplot)
+library(cowplot)
+library(factoextra)
+library(FactoMineR)
 library(EnvStats)
-library(dplyr)
+library(ggcorrplot)
+library(ggrepel)
+library(ggsci)
+library(magrittr)
 library(MASS)
+library(patchwork)
+library(RColorBrewer)
+library(readxl)
+library(reshape2)
+library(RVAideMemoire)
+library(tidyverse)
+library(vegan)
 ```
 
-### `Load data`
+### Raw data
 
 Raw are available in one single file that is read into the working memory below
 
@@ -61,9 +84,202 @@ data$Infection_binomial <-
   as.factor()
 ## mean-centering
 data$Age <- scale(data$Age_standardised)
+## Group infection intensity in three groups
+data$Infection_class <- sapply(data$Infection_intensity, function(x) {
+    case_when(
+  x == 0 ~ "Uninfected",
+  x %in% 1:2 ~ "Infected (low)",
+  x %in% 3:4 ~ "Infected (high)",
+  TRUE ~ as.character(x))
+  }) 
 ```
 
-### Test 1: *Heterophiles are significantly higher in infected individuals across species*
+### Analyses
+
+#### A.) PCA
+
+Principal component analysis as unsupervised clustering approach
+
+```{r}
+## Subset the raw data for PCA
+pca.dat <- 
+  data[,
+       c("Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent", "Heterophiles_percent",
+         "H_L_ratio", "Basophiles_percent", "Eosinophiles_percent", "AP", "AST",
+         "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB",  "TP")] %>% 
+  ## mean centering of variables
+  scale() %>% 
+  na.omit()
+```
+
+Visualising correaltion matrix to check for collinear variables
+
+```{r}
+## obtain all pairwise correlations 
+cor.values <- cor(pca.dat)
+
+## compute p.values using a custom function
+# source: http://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
+cor.mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    p.mat <- matrix(NA, n, n)
+    diag(p.mat) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+        }
+    }
+  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+  p.mat
+}
+
+# matrix of the p-value of the correlation
+p.mat <- cor.mtest(pca.dat)
+
+## Some collinearity is there!
+corrplot(cor(pca.dat), type = "upper", order = "hclust", p.mat = p.mat, sig.level = 0.05, tl.srt = 45)
+```
+
+The above plot showes that there are a few issues regarding colliniear variables. Most evident is this for the ratio between Heterocytes and Lymphocytes, which is therefore not considered in the subsequent PCA
+
+Running PCA
+
+```{r}
+## removing H:L ratio
+pca.dat <- subset(pca.dat, select = -c(H_L_ratio))
+
+## Defining function for circular plots
+circleFun <- function(center = c(0,0), diameter = 1, npoints = 100){
+  r = diameter / 2
+  tt <- seq(0,2*pi,length.out = npoints)
+  xx <- center[1] + r * cos(tt)
+  yy <- center[2] + r * sin(tt)
+  return(data.frame(x = xx, y = yy))
+}
+
+circ <- circleFun(c(0,0), 2 , npoints = 500)
+
+## Conduct PCA
+## PCA  (cf https://tem11010.github.io/Plotting-PCAs/)
+pca <- PCA(pca.dat)
+## Extract PC´s and reformat
+pca.coords <- data.frame(pc1 = unlist(pca$ind$coord[, 1], recursive = T,use.names = T), 
+                         pc2 = unlist(pca$ind$coord[, 2], recursive = T,use.names = T))
+
+pca.vars <- pca$var$coord %>% data.frame
+pca.vars$vars <- rownames(pca.vars)
+pca.vars.m <- melt(pca.vars, id.vars = "vars")
+
+## Plot PCA variables correlation
+vars.p <- ggplot() +
+  geom_path(data = circ,aes(x, y), lty = 2, color = "grey", alpha = 0.7) +
+  geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
+  geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
+  geom_segment(data = pca.vars, aes(x = 0, xend = Dim.1, y = 0, yend = Dim.2),
+               arrow = arrow(length = unit(0.025, "npc"), type = "open"), 
+               lwd = 1) + 
+  geom_text_repel(data = pca.vars, 
+                  aes(x = Dim.1*1.15, y =  Dim.2*1.15, 
+                      label = colnames(pca.dat), 
+                      size = 5)) +
+  xlab("PC 1") + 
+  ylab("PC 2") +
+  coord_equal() +
+  theme_minimal() +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(fill = "transparent"))
+
+## Plot PCA individual with species labels
+pca.indplot <- 
+  ggplot(data = pca.coords, aes(x = pc1, y = pc2, color = data$Species)) +
+  geom_point(size = 4) +
+  ## avoid hard coding here!
+  labs(x = "PC1 (16.89%)", y = "PC2 (14.98%)") +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = 0, lty = 2) +
+  scale_color_manual(values = c("#427EF6", "#7C3918", "#FF9100")) +
+  scale_fill_manual(values = c("#427EF6", "#7C3918", "#FF9100")) +
+  theme_classic() +
+  theme(legend.position = "bottom", 
+        legend.text = element_text(size = 12),
+        legend.title = element_blank(),
+        axis.title = element_text(size = 14), 
+        axis.text = element_text(size = 12), 
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        panel.border = element_rect(fill = "transparent")) +
+  stat_ellipse(geom = "polygon",
+               aes(fill = data$Species),alpha = 0.2, show.legend = F, level = 0.95)
+
+
+# Plot PCA individuals with infection intensity labels 
+pca.infplot <- 
+  ggplot(data = pca.coords, aes(x = pc1, y = pc2, color = data$Infection_class)) +
+  geom_point(size = 4) +
+  ## avpid hard coding !
+  labs(x = "PC1 (16.89%)", y = "PC2 (14.98%)") +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = 0, lty = 2) +
+  scale_color_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
+  scale_fill_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
+  theme_classic() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        panel.border = element_rect(fill = "transparent")) +
+  stat_ellipse(geom = "polygon",
+               aes(fill = data$Infection_class), alpha = 0.2, show.legend = F, level = 0.95)
+
+pca.indplot / pca.infplot | vars.p + plot_layout(ncol = 1)
+```
+
+
+#### B.) LDA
+
+Linear discriminant analysis as supervised clustering method
+
+```{r}
+## LDA constrained by Species
+qqPlot(pca.dat[,1])
+anova(betadisper(dist(pca.dat), data$Species))
+ldaSpecies = lda(pca.dat, data$Species)   #  CV=T ajout script Olivier
+#MVA.cv(pca.dat, data$Species, model = "LDA")
+```
+
+```{r}
+par(mfrow = c(1,2))
+MVA.plot(ldaSpecies, fac = data$Species, xlab = "LD 1", ylab = "LD 2",
+         col = c("#427EF6", "#7C3918", "#FF9100"), legend = F, legend.cex = 0.5,
+         legend.pos = "topleft", 
+         legend.lab = c("Accipiter gentilis", "Buteo buteo","Milvus milvus"))
+MVA.plot(ldaSpecies, "corr", xlab = "Axis 1", ylab = "Axis 2")
+```
+
+```{r}
+anova(betadisper(dist(pca.dat), data$Infection_class))
+ldaInfclass = lda(pca.dat, data$Infection_class)   #  CV=T ajout script Olivier
+
+par(mfrow = c(1,2))
+MVA.plot(ldaInfclass, fac = data$Infection_class, 
+         xlab = "LD 1", ylab = "LD 2", col = c("#427EF6", "#7C3918", "#FF9100"),
+         legend = F)
+MVA.plot(ldaInfclass, "corr", xlab = "LD 1", ylab = "LD 2")
+
+# mod=lm(as.matrix(bvPGR)~catptPGR)
+# 
+# plotresid(mod)
+# 
+# Manova(mod, test.statistic="Wilks")
+# 
+# summary(mod)
+```
+
+#### C.) Linear models 
+
+##### Test 1: *Heterophiles are significantly higher in infected individuals across species*
 
 ```{r}
 heterophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Heterophiles_percent)) +
@@ -88,7 +304,7 @@ lm(Heterophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 2: *Lymphocytes are significantly lower in infected individuals across species*
+##### Test 2: *Lymphocytes are significantly lower in infected individuals across species*
 
 ```{r}
 lymphocytes_plot <- ggplot(data,
@@ -116,7 +332,7 @@ lm(Lymphocytes_percent ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 3: *BA is significantly higher in infected individuals across species*
+##### Test 3: *BA is significantly higher in infected individuals across species*
 
 ```{r}
 BA_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = BA)) +
@@ -143,7 +359,7 @@ lm(BA ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 4: *AST is significantly higher in infected individuals across species*
+##### Test 4: *AST is significantly higher in infected individuals across species*
 
 ```{r}
 AST_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = AST)) +
@@ -170,7 +386,7 @@ lm(AST ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 5: *LDH is significantly higher in infected individuals across species*
+##### Test 5: *LDH is significantly higher in infected individuals across species*
 
 ```{r}
 LDH_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = LDH)) +
@@ -194,7 +410,7 @@ lm(LDH ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 6: *Eosinophiles is significantly higher in infected individuals across species*
+##### Test 6: *Eosinophiles is significantly higher in infected individuals across species*
 
 ```{r}
 Eosinophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Eosinophiles_percent)) +
@@ -218,7 +434,7 @@ lm(Eosinophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 7: *Monocytes do not differ between infeceted and uninfected individuals*
+##### Test 7: *Monocytes do not differ between infeceted and uninfected individuals*
 
 *Monocytes are invariant in buteo buteo*
 
@@ -244,7 +460,7 @@ lm(Monocytes_percent ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 8: *Basophiles do not differ between infeceted and uninfected individuals*
+##### Test 8: *Basophiles do not differ between infeceted and uninfected individuals*
 
 ```{r}
 Basophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Basophiles_percent)) +
@@ -269,7 +485,7 @@ summary()
 ```
 
 
-### Test 9: *AP do not differ between infeceted and uninfected individuals*
+##### Test 9: *AP do not differ between infeceted and uninfected individuals*
 
 ```{r}
 AP_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = AP)) +
@@ -294,7 +510,7 @@ summary()
 ```
 
 
-### Test 10: *gGT do not differ between infeceted and uninfected individuals*
+##### Test 10: *gGT do not differ between infeceted and uninfected individuals*
 
 ```{r}
 gGT_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = gGT)) +
@@ -319,7 +535,7 @@ summary()
 ```
 
 
-### Test 11: *CHE do not differ between infeceted and uninfected individuals*
+##### Test 11: *CHE do not differ between infeceted and uninfected individuals*
 
 ```{r}
 CHE_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = CHE)) +
@@ -344,7 +560,7 @@ summary()
 ```
 
 
-### Test 12: *GLDH do not differ between infeceted and uninfected individuals*
+##### Test 12: *GLDH do not differ between infeceted and uninfected individuals*
 
 ```{r}
 GLDH_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = GLDH)) +
@@ -369,7 +585,7 @@ summary()
 ```
 
 
-### Test 13: *CK do not differ between infeceted and uninfected individuals*
+##### Test 13: *CK do not differ between infeceted and uninfected individuals*
 
 ```{r}
 CK_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = CK)) +
@@ -394,7 +610,7 @@ summary()
 ```
 
 
-### Test 14: *ALB do not differ between infeceted and uninfected individuals*
+##### Test 14: *ALB do not differ between infeceted and uninfected individuals*
 
 ```{r}
 ALB_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = ALB)) +
@@ -419,7 +635,7 @@ summary()
 ```
 
 
-### Test 15: *TP do not differ between infeceted and uninfected individuals*
+##### Test 15: *TP do not differ between infeceted and uninfected individuals*
 
 ```{r}
 TP_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = TP)) +
@@ -443,7 +659,7 @@ lm(TP ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 16: *Ca do not differ between infeceted and uninfected individuals*
+##### Test 16: *Ca do not differ between infeceted and uninfected individuals*
 
 ```{r}
 Ca_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Ca)) +
@@ -467,7 +683,7 @@ lm(Ca ~ Infection_binomial + Sex + Age + Species, data) %>%
 summary()
 ```
 
-### Test 17: *P do not differ between infeceted and uninfected individuals*
+##### Test 17: *P do not differ between infeceted and uninfected individuals*
 
 ```{r}
 P_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = P)) +
@@ -490,110 +706,3 @@ P_plot
 lm(P ~ Infection_binomial + Sex + Age + Species, data) %>% 
 summary()
 ```
-
-### LDA: Species discrimination
-
-Species are well disciminated by overall blood chemistry, while *Accipiter gentilis* samples show the highest within group variance.
-
-```{r}
-vars <- data[,c("Species", "Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent", "Heterophiles_percent", "Basophiles_percent", "Eosinophiles_percent",  "AP", "AST", "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB", "TP", "Infection_binomial")]
-
-lda <- lda(as.factor(Species) ~ ., data = vars, prior = rep(1, length(unique(vars$Species)))/length(unique(vars$Species)))
-
-#Project data on linear discriminants
-lda.values <- predict(lda, vars[,-1])
-
-## variance explained
-r.sq <- (lda$svd^2/sum(lda$svd^2))
-
-## visualise loadings
-# df.lda <- data.frame(varnames = rownames(coef(lda)), coef(lda))
-# rad <- length(unique(vars$Species))
-# df.lda$length <- with(df.lda, sqrt(LD1^2 + LD2^2))
-# df.lda$angle <- atan2(df.lda$LD1, df.lda$LD2)
-# df.lda$x_start <- df.lda$y_start <- 0
-# df.lda$x_end <- cos(df.lda$angle) * rad
-# df.lda$y_end <- sin(df.lda$angle) * rad
-
-#Plot the results
-lda_plot <- ggplot(cbind(vars, lda.values$x),
-                   aes(y = LD1, x = LD2, colour = Species)) + 
-  stat_ellipse(aes(fill = Species), geom = "polygon", alpha = .3) +
-  geom_point() +
-  theme_classic() +
-  xlab(paste0("LD2 (", round(r.sq[2] * 100, 2), "%)")) +
-  ylab(paste0("LD1 (", round(r.sq[1] * 100, 2), "%)")) +
-  theme(legend.position = "bottom") 
-lda_plot
-```
-
-### LDA: Species and infection status
-
-```{r}
-vars <- data[,c("Species", "Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent", "Heterophiles_percent", "Basophiles_percent", "Eosinophiles_percent",  "AP", "AST", "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB", "TP", "Infection_binomial")]
-
-## leave out Accipiter gentilis, to few samples
-vars <- filter(vars, Species %in% c("Buteo buteo", "Milvus milvus"))
-
-vars[["Species"]] <- paste0(vars[["Species"]],"-L", vars[["Infection_binomial"]])
-vars <- subset(vars, select = -c(Infection_binomial))
-
-lda <- lda(as.factor(Species) ~ ., data = vars, prior = rep(1, length(unique(vars$Species)))/length(unique(vars$Species)))
-
-#Project data on linear discriminants
-lda.values <- predict(lda, vars[,-1])
-
-## variance explained
-r.sq <- (lda$svd^2/sum(lda$svd^2))
-
-#Plot the results
-lda_plot <- ggplot(cbind(vars, lda.values$x),
-                   aes(y = LD1, x = LD2, colour = Species)) + 
-  stat_ellipse(aes(fill = Species), geom = "polygon", alpha = .3) +
-  geom_point() +
-  theme_classic() +
-  xlab(paste0("LD2 (", round(r.sq[2] * 100, 2), "%)")) +
-  ylab(paste0("LD1 (", round(r.sq[1] * 100, 2), "%)")) +
-  theme(legend.position = "bottom") +
-  scale_color_brewer(type = "div", palette = "RdBu") +
-  scale_fill_brewer(type = "div", palette = "RdBu")
-lda_plot
-<<<<<<< HEAD
-```
-
-### LDA: Buteo buteo details
-
-```{r}
-vars <- data[,c("Species", "Leukocyte_count", "Lymphocytes_percent", "Heterophiles_percent", "Basophiles_percent", "Eosinophiles_percent",  "AP", "AST", "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB", "TP", "Infection_intensity")]
-
-## leave out Accipiter gentilis, to few samples
-vars <- filter(vars, Species %in% c("Buteo buteo"))
-vars$Infection_intensity[vars$Infection_intensity == 0] <- "uninfected"
-vars$Infection_intensity[vars$Infection_intensity %in% 1:2] <- "low"
-vars$Infection_intensity[vars$Infection_intensity %in% 3:4] <- "high"
-
-vars[["Species"]] <- paste0(vars[["Species"]],"---", vars[["Infection_intensity"]])
-vars <- subset(vars, select = -c(Infection_intensity))
-
-lda <- lda(as.factor(Species) ~ ., data = vars, prior = rep(1, length(unique(vars$Species)))/length(unique(vars$Species)))
-
-#Project data on linear discriminants
-lda.values <- predict(lda, vars[,-1])
-
-## variance explained
-r.sq <- (lda$svd^2/sum(lda$svd^2))
-
-#Plot the results
-lda_plot <- ggplot(cbind(vars, lda.values$x),
-                   aes(y = LD1, x = LD2, colour = Species)) + 
-  stat_ellipse(aes(fill = Species), geom = "polygon", alpha = .3) +
-  geom_point() +
-  theme_classic() +
-  xlab(paste0("LD2 (", round(r.sq[2] * 100, 2), "%)")) +
-  ylab(paste0("LD1 (", round(r.sq[1] * 100, 2), "%)")) +
-  theme(legend.position = "bottom") 
-lda_plot
-=======
->>>>>>> 9be62d77df38dc42770ba14b916f5f6403c1c74b
-```
-
