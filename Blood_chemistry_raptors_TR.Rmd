@@ -7,6 +7,10 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+# Set the working directory
+
+setwd("C://Users/Tony/Documents/Phd Bielefeld/Data manip/Chemistry_blood/BloodChemistryR/data/")
 ```
 
 ```{r packages, message=F}
@@ -35,6 +39,7 @@ library(patchwork)
 library(EnvStats)
 library(ggrepel)
 library(Hmisc)
+library(heplots)
 
 # Routine clean-up upon start
 
@@ -44,13 +49,10 @@ rm(list=ls())
 # PCA
 
 ```{r}
-# Set the working directory
-
-setwd("C://Users/Tony/Documents/Phd Bielefeld/Data manip/Chemistry_blood/BloodChemistryR/data/")
 
 # Load the raw file, blood chemistry (update with NA instead of blanks)
 
-bloody=read.csv2('raw_18.09.20.csv', h=T, dec=',')
+bloody=read.csv2('data/raw.csv', h=T, dec=',')
 
 # Setting classes
 
@@ -191,21 +193,15 @@ for(i in dimnames(bloodypca)[[2]]) {
 
 anova(betadisper(dist(bloodypca),bloody$Species))
 
-heplots::covEllipses(diabetes[,1:8], 
-                     diabetes$Outcome, 
-                     fill = TRUE, 
-                     pooled = FALSE, 
-                     col = c("blue", "red"), 
-                     variables = c(1:5, 8), 
-                     fill.alpha = 0.05)
-
 # LDA constrained by species
 
-ldaSpecies=lda(bloodypca, bloody$Species, CV=T)   #  CV=T 
+ldaSpecies=lda(bloodypca, bloody$Species)   #  CV=T 
+
+ldaSpecies
 
 # Cross-validation of the dataset
 
-tableclass=base::table(bloody$Species, ldaSpecies$class)
+# tableclass=base::table(bloody$Species, ldaSpecies$lass)
 
 MVA.cv(bloodypca, bloody$Species, model="LDA", scale=T)
 
@@ -229,8 +225,6 @@ qqPlot(bloodypca[,1])
 anova(betadisper(dist(bloodypca),bloody$infectionclass))
 
 ldaInfclass=lda(bloodypca, bloody$infectionclass)   #  CV=T
-
-#tableclass=base::table(catptPGR, ldaPGR$class)
 
 MVA.cv(bloodypca, bloody$infectionclass, model="LDA", scale=T)
 
@@ -262,21 +256,12 @@ anova(betadisper(dist(bloodypca),bloody$AgeClass))
 
 ldaAge=lda(bloodypca, bloody$AgeClass)   #  CV=T
 
-tableclass=base::table(bloody$AgeClass, ldaAge$class)
-
 MVA.cv(bloodypca, bloody$infectionclass,model="LDA", scale=T)
 
 par(mfrow=c(1,2))
 MVA.plot(ldaAge,fac=bloody$AgeClass,xlab="Axis 1", ylab="Axis 2",col=c("#427EF6", "#7C3918", "#FF9100"), legend=F, legend.cex=0.9, legend.pos="topleft")
 MVA.plot(ldaAge,"corr", xlab="Axis 1", ylab="Axis 2")
 
-# mod=lm(as.matrix(bvPGR)~catptPGR)
-# 
-# plotresid(mod)
-# 
-# Manova(mod, test.statistic="Wilks")
-# 
-# summary(mod)
 ```
 ## LDA constrained by Body condition classes Low / Average / High
 
@@ -287,16 +272,14 @@ bloody$Body_condition=residuals(lm(bloody$Mass~bloody$Wing))
 bloody$Bcond_Class=NA
 
 for (i in 1:length(bloody$Body_condition)){
-  if(bloody$Body_condition[i] <= -235.1){bloody$Bcond_Class[i]="Low"}
-  if(bloody$Body_condition[i] > -48.5 & bloody$Body_condition[i] <= 2.44){bloody$Bcond_Class[i]="Average"}
+  if(bloody$Body_condition[i] < -48.5){bloody$Bcond_Class[i]="Low"}
+  if(bloody$Body_condition[i] >= -48.5 & bloody$Body_condition[i] <= 52.2){bloody$Bcond_Class[i]="Average"}
   if(bloody$Body_condition[i] > 52.2){bloody$Bcond_Class[i]="High"}
 } 
 
 bloody$Bcond_Class=as.factor(bloody$Bcond_Class)
 
 #LDA constrained by body condition
-
-qqPlot(bloodypca[,1])
 
 anova(betadisper(dist(bloodypca),bloody$Bcond_Class))
 
@@ -309,13 +292,5 @@ ldaBcond_Class=lda(bloodypca, bloody$Bcond_Class)   #  CV=T
 par(mfrow=c(1,2))
 MVA.plot(ldaBcond_Class,fac=bloody$Bcond_Class,xlab="Axis 1", ylab="Axis 2",col=c("#427EF6", "#7C3918", "#FF9100"), legend=F, legend.cex=0.9, legend.pos="topleft")
 MVA.plot(ldaBcond_Class,"corr", xlab="Axis 1", ylab="Axis 2")
-
-# mod=lm(as.matrix(bvPGR)~catptPGR)
-# 
-# plotresid(mod)
-# 
-# Manova(mod, test.statistic="Wilks")
-# 
-# summary(mod)
 
 ```
