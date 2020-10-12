@@ -1,6 +1,6 @@
 ---
 title: "R-code for 'TITLE OF THE PAPER'"
-author: "AUTHORS OF THE PAPER"
+author: "Meinolf Ottensmann & Tony Rinaud"
 output: html_document
 header-includes:
 - \usepackage{pdflscape}
@@ -15,20 +15,24 @@ knitr::opts_chunk$set(echo = TRUE)
 
 *In preparation*
 
-This document provides all the `R code` used in our paper. Both the Rmarkdown file and the data can be downloaded from the accompanying GitHub repository on (https://github.com/mottensmann/...) as a zip archive containing all the files. We recommend to download or clone this [GitHub repository](https://github.com/mottensmann/...) in order to access the documentation together with all the files that are needed to repeat analyses shown in this document. Just click on the link above and then on the green box `Clone or download`. In order to function properly, the same structure of folders must be kept. If you have any questions, don't hesitate to contact meinolf.ottensmann[at]web.de
+This document provides all the `R code` to reproduce results presented in our paper. Both the Rmarkdown file and the data can be downloaded from the accompanying GitHub repository on (https://github.com/mottensmann/BloodChemistryR) as a zip archive containing all the files. We recommend to download or clone this [GitHub repository](https://github.com/mottensmann/BloodChemistryR) in order to access the documentation together with all the files that are needed to repeat analyses shown in this document. Just click on the link above and then on the green box `Clone or download`. In order to function properly, the same structure of folders must be kept. If you have any questions, don't hesitate to contact meinolf.ottensmann[at]web.de
 
 In order to repeat analyses presented in this manuscript a number of packages that extend the functionalities of base `R` are required. These can be installed using the code shown below.
 
 ```{r install, comment="install packages", eval=FALSE}
+## not run!
 install.packages("ade4")
 install.packages("chron")
 install.packages("cowplot")
+install.packages("devtools")
 install.packages("factoextra")
 install.packages("FactoMineR")
 install.packages("EnvStats")
 install.packages("ggcorrplot")
 install.packages("ggrepel")
 install.packages("ggsci")
+install.packages(Hmisc)
+install.packages(heplots)
 install.packages("magrittr")
 install.packages("MASS")
 install.packages("patchwork")
@@ -36,6 +40,7 @@ install.packages("RColorBrewer")
 install.packages("readxl")
 install.packages("reshape2")
 install.packages("RVAideMemoire")
+install.packages("sjPlot")
 install.packages("tidyverse")
 install.packages("vegan")
 ```
@@ -52,8 +57,11 @@ library(factoextra)
 library(FactoMineR)
 library(EnvStats)
 library(ggcorrplot)
+library(ggeffects)
 library(ggrepel)
 library(ggsci)
+library(Hmisc)
+library(heplots)
 library(magrittr)
 library(MASS)
 library(patchwork)
@@ -61,44 +69,59 @@ library(RColorBrewer)
 library(readxl)
 library(reshape2)
 library(RVAideMemoire)
+library(sjPlot)
 library(tidyverse)
 library(vegan)
 ```
 
 ### Raw data
 
-Raw are available in one single file that is read into the working memory below
+Raw data are provided in one single file that is read into the working memory using the following command
 
 ```{r read table, message=FALSE, warning=FALSE}
 ## read data
 data <- readxl::read_xlsx("data/raw.xlsx") %>% as.data.frame()
 ```
 
-For the analysis a few manipulations have to be applied first, including standardising predictor variables using mean-centering. 
-
+For the analyses some data wrangling is needed first. Prior to analysis, all continuous variables are standardised using a z-transformation to improve model convergence as well as the interpretation of model estimates (e.g. Schielzeth 2010).
 
 ```{r}
-## coding infection as binomial variable
-data$Infection_binomial <- 
-  ifelse(data$Infection_intensity == 0, 0, 1) %>% 
-  as.factor()
-## mean-centering
-data$Age <- scale(data$Age_standardised)
-## Group infection intensity in three groups
-data$Infection_class <- sapply(data$Infection_intensity, function(x) {
-    case_when(
-  x == 0 ~ "Uninfected",
-  x %in% 1:2 ~ "Infected (low)",
-  x %in% 3:4 ~ "Infected (high)",
-  TRUE ~ as.character(x))
-  }) 
+data <- 
+  mutate(data,
+         Species = factor(Species, levels = c("Buteo buteo", "Milvus milvus", "Accipiter gentilis"))) %>% 
+  ## code a binomial factor to describe infection levels as infected vs uninfected
+  mutate(Infection_binomial = ifelse(Infection_intensity == 0, 0, 1) %>%
+                 as.factor()) %>% 
+  ## code infection levels in three classes
+  mutate(Infectionclass = case_when(
+  Infection_intensity == 0 ~ "Uninfected",
+  Infection_intensity %in% 1:2 ~ "Infected (low)",
+  Infection_intensity %in% 3:4 ~ "Infected (high)",
+  TRUE ~ as.character(Infection_intensity))
+   %>% 
+  as.factor()) %>% 
+  ## add a grouping variable for the variable age
+  mutate(AgeClass = case_when(
+    Age <= 25 ~ "Three weeks",
+    Age > 25 & Age < 30 ~ "A month",
+    Age > 30 ~ "Over a month"
+  ) %>% 
+  as.factor()) %>% 
+  mutate(AgeClass2 = case_when(
+    Age_standardised <= 0.33 ~ "1/3",
+    Age_standardised > 0.33 & Age_standardised < 0.66 ~ "2/3",
+    Age_standardised > 0.66 ~ "3/3"
+  )) %>% 
+  ## z-transform standardised ages
+  mutate(Age = scale(data$Age_standardised) %>% 
+  as.numeric())
 ```
 
 ### Analyses
 
 #### A.) PCA
 
-Principal component analysis as unsupervised clustering approach
+First, we use a principal component analysis as unsupervised clustering approach
 
 ```{r}
 ## Subset the raw data for PCA
@@ -112,46 +135,20 @@ pca.dat <-
   na.omit()
 ```
 
-Visualising correaltion matrix to check for collinear variables
+Visualising correlation matrix to check for collinearity issues
 
 ```{r}
-## obtain all pairwise correlations 
-cor.values <- cor(pca.dat)
-
-## compute p.values using a custom function
-# source: http://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
-cor.mtest <- function(mat, ...) {
-    mat <- as.matrix(mat)
-    n <- ncol(mat)
-    p.mat <- matrix(NA, n, n)
-    diag(p.mat) <- 0
-    for (i in 1:(n - 1)) {
-        for (j in (i + 1):n) {
-            tmp <- cor.test(mat[, i], mat[, j], ...)
-            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
-        }
-    }
-  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
-  p.mat
-}
-
-# matrix of the p-value of the correlation
-p.mat <- cor.mtest(pca.dat)
-
-## Some collinearity is there!
-corrplot(cor(pca.dat), type = "upper", order = "hclust", p.mat = p.mat, sig.level = 0.05, tl.srt = 45)
+ggcorrplot(cor(pca.dat), p.mat = cor_pmat(pca.dat), hc.order=TRUE, type='lower')
 ```
 
-The above plot showes that there are a few issues regarding colliniear variables. Most evident is this for the ratio between Heterocytes and Lymphocytes, which is therefore not considered in the subsequent PCA
-
-Running PCA
+The above plot shows that there are a few issues regarding collinear variables. Most evident is this for the ratio between Heterocytes and Lymphocytes.
 
 ```{r}
 ## removing H:L ratio
-pca.dat <- subset(pca.dat, select = -c(H_L_ratio))
+#pca.dat <- subset(pca.dat, select = -c(H_L_ratio))
 
 ## Defining function for circular plots
-circleFun <- function(center = c(0,0), diameter = 1, npoints = 100){
+circleFun <- function(center = c(0,0),diameter = 1, npoints = 100){
   r = diameter / 2
   tt <- seq(0,2*pi,length.out = npoints)
   xx <- center[1] + r * cos(tt)
@@ -159,11 +156,12 @@ circleFun <- function(center = c(0,0), diameter = 1, npoints = 100){
   return(data.frame(x = xx, y = yy))
 }
 
-circ <- circleFun(c(0,0), 2 , npoints = 500)
+circ <- circleFun(c(0,0),2,npoints = 500)
 
 ## Conduct PCA
 ## PCA  (cf https://tem11010.github.io/Plotting-PCAs/)
-pca <- PCA(pca.dat)
+pca <- PCA(pca.dat, graph = F)
+
 ## Extract PC´s and reformat
 pca.coords <- data.frame(pc1 = unlist(pca$ind$coord[, 1], recursive = T,use.names = T), 
                          pc2 = unlist(pca$ind$coord[, 2], recursive = T,use.names = T))
@@ -173,80 +171,99 @@ pca.vars$vars <- rownames(pca.vars)
 pca.vars.m <- melt(pca.vars, id.vars = "vars")
 
 ## Plot PCA variables correlation
-vars.p <- ggplot() +
-  geom_path(data = circ,aes(x, y), lty = 2, color = "grey", alpha = 0.7) +
-  geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
-  geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
+vars.p <-  ggplot() +
+  geom_path(data = circ,aes(x,y), lty = 2, color = "grey", alpha = 0.7)+
+  geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9)+
+  geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9)+
   geom_segment(data = pca.vars, aes(x = 0, xend = Dim.1, y = 0, yend = Dim.2),
                arrow = arrow(length = unit(0.025, "npc"), type = "open"), 
-               lwd = 1) + 
+               lwd = 1)+ 
   geom_text_repel(data = pca.vars, 
                   aes(x = Dim.1*1.15, y =  Dim.2*1.15, 
-                      label = colnames(pca.dat), 
-                      size = 5)) +
-  xlab("PC 1") + 
-  ylab("PC 2") +
-  coord_equal() +
-  theme_minimal() +
+                      label = row.names(pca.vars)), 
+                  color = "blue",
+                  size = 5)+
+  xlab(paste0("PC 1 (", round(pca$eig[1,2],2),"%)"))+ 
+  ylab(paste0("PC 2 (", round(pca$eig[2,2],2),"%)"))+
+  coord_equal()+
+  theme_minimal()+
   theme(panel.grid = element_blank(), 
-        panel.border = element_rect(fill = "transparent"))
+        panel.border = element_rect(fill= "transparent"))
 
-## Plot PCA individual with species labels
-pca.indplot <- 
-  ggplot(data = pca.coords, aes(x = pc1, y = pc2, color = data$Species)) +
+vars.p
+```
+
+##### Plot PCA individual with species labels
+
+```{r}
+indplot <- 
+  ggplot(pca.coords, aes(x = pc1, y = pc2, color = data$Species)) +
+  geom_point(color = 'black', size = 4.5) +
   geom_point(size = 4) +
-  ## avoid hard coding here!
-  labs(x = "PC1 (16.89%)", y = "PC2 (14.98%)") +
+  labs(color = "Species") +
+  xlab(paste0("PC 1 (", round(pca$eig[1,2],2),"%)"))+ 
+  ylab(paste0("PC 2 (", round(pca$eig[2,2],2),"%)"))+
   geom_hline(yintercept = 0, lty = 2) +
   geom_vline(xintercept = 0, lty = 2) +
-  scale_color_manual(values = c("#427EF6", "#7C3918", "#FF9100")) +
-  scale_fill_manual(values = c("#427EF6", "#7C3918", "#FF9100")) +
-  theme_classic() +
-  theme(legend.position = "bottom", 
-        legend.text = element_text(size = 12),
-        legend.title = element_blank(),
-        axis.title = element_text(size = 14), 
-        axis.text = element_text(size = 12), 
-        plot.title = element_text(hjust = 0.5, face = "bold"),
-        panel.border = element_rect(fill = "transparent")) +
-  stat_ellipse(geom = "polygon",
-               aes(fill = data$Species),alpha = 0.2, show.legend = F, level = 0.95)
-
-
-# Plot PCA individuals with infection intensity labels 
-pca.infplot <- 
-  ggplot(data = pca.coords, aes(x = pc1, y = pc2, color = data$Infection_class)) +
-  geom_point(size = 4) +
-  ## avpid hard coding !
-  labs(x = "PC1 (16.89%)", y = "PC2 (14.98%)") +
-  geom_hline(yintercept = 0, lty = 2) +
-  geom_vline(xintercept = 0, lty = 2) +
-  scale_color_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
-  scale_fill_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
-  theme_classic() +
+  scale_color_manual(values=c("#427EF6", "#7C3918", "#FF9100")) +
+  theme_classic()+
   theme(legend.position = "bottom",
         legend.text = element_text(size = 12),
         axis.title = element_text(size = 14),
         axis.text = element_text(size = 12),
         plot.title = element_text(hjust = 0.5, face = "bold"),
         panel.border = element_rect(fill = "transparent")) +
-  stat_ellipse(geom = "polygon",
-               aes(fill = data$Infection_class), alpha = 0.2, show.legend = F, level = 0.95)
+    stat_ellipse(geom = "polygon", aes(fill = data$Species),
+                 alpha = 0.2, show.legend = FALSE, level = 0.95)
+```
 
-pca.indplot / pca.infplot | vars.p + plot_layout(ncol = 1)
+##### Plot PCA individuals with infection intensity labels 
+
+```{r}
+indinfplot <- ggplot(data = pca.coords, 
+                     aes(x = pc1, y = pc2, color = as.factor(data$Infectionclass))) +
+  geom_point(color='black',size=4.5) +
+  geom_point(size = 4) +
+  xlab(paste0("PC 1 (", round(pca$eig[1,2],2),"%)"))+ 
+  ylab(paste0("PC 2 (", round(pca$eig[2,2],2),"%)"))+
+  labs(color = "Infection intensity") +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = 0, lty = 2) +
+  scale_color_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
+  theme_classic() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12), 
+        plot.title = element_text(hjust = 0.5, face="bold"),
+        panel.border = element_rect(fill= "transparent")) +
+  stat_ellipse(geom ="polygon", aes(color = as.factor(data$Infectionclass)), 
+               alpha = 0.05, show.legend = FALSE, level = 0.95, size=0.7)
+
+indplot/indinfplot|vars.p + plot_layout(ncol = 1)
 ```
 
 
 #### B.) LDA
 
-Linear discriminant analysis as supervised clustering method
+Linear discriminant analysis as supervised clustering method.
 
 ```{r}
-## LDA constrained by Species
-qqPlot(pca.dat[,1])
-anova(betadisper(dist(pca.dat), data$Species))
-ldaSpecies = lda(pca.dat, data$Species)   #  CV=T ajout script Olivier
-#MVA.cv(pca.dat, data$Species, model = "LDA")
+# Checking normal multivariate distribution
+# par(mfrow = c(2, 2))
+# for(i in dimnames(pca.dat)[[2]]) {
+#   qqnorm(pca.dat[,i]); qqline(pca.dat[,i], col = 3)
+# }
+
+# Checking homogeneity of the matrix variance - covariance
+anova(betadisper(dist(pca.dat),data$Species))
+
+# LDA constrained by species
+(ldaSpecies=lda(pca.dat, data$Species))  
+
+# Cross-validation of the dataset
+# tableclass=base::table(bloody$Species, ldaSpecies$lass)
+MVA.cv(pca.dat, data$Species, model = "LDA", scale=T)
 ```
 
 ```{r}
@@ -257,27 +274,62 @@ MVA.plot(ldaSpecies, fac = data$Species, xlab = "LD 1", ylab = "LD 2",
          legend.lab = c("Accipiter gentilis", "Buteo buteo","Milvus milvus"))
 MVA.plot(ldaSpecies, "corr", xlab = "Axis 1", ylab = "Axis 2")
 ```
+##### LDA constrained by Infection class
 
 ```{r}
-anova(betadisper(dist(pca.dat), data$Infection_class))
-ldaInfclass = lda(pca.dat, data$Infection_class)   #  CV=T ajout script Olivier
+# Checking normal multivariate distribution
+qqPlot(pca.dat[,1])
+anova(betadisper(dist(pca.dat),data$Infectionclass))
 
-par(mfrow = c(1,2))
-MVA.plot(ldaInfclass, fac = data$Infection_class, 
-         xlab = "LD 1", ylab = "LD 2", col = c("#427EF6", "#7C3918", "#FF9100"),
-         legend = F)
-MVA.plot(ldaInfclass, "corr", xlab = "LD 1", ylab = "LD 2")
+ldaInfclass = lda(pca.dat, data$Infectionclass)   #  CV=T
 
-# mod=lm(as.matrix(bvPGR)~catptPGR)
-# 
-# plotresid(mod)
-# 
-# Manova(mod, test.statistic="Wilks")
-# 
-# summary(mod)
+MVA.cv(pca.dat, data$Infectionclass, model="LDA", scale=T)
+
+par(mfrow=c(1,2))
+MVA.plot(ldaInfclass, fac = data$Infectionclass,
+         xlab = "Axis 1", 
+         ylab = "Axis 2",
+         col = c("#427EF6", "#7C3918", "#FF9100"),
+         legend = F,
+         legend.cex = 0.9, 
+         legend.pos = "topleft",
+         legend.lab = c("High Infection", "Low Infection","No Infection"))
+MVA.plot(ldaInfclass,"corr", xlab = "Axis 1", ylab = "Axis 2")
+```
+
+##### LDA constrained by Age classes Three weeks / A month / A month+
+
+```{r}
+anova(betadisper(dist(pca.dat),data$AgeClass))
+
+ldaAge=lda(pca.dat, data$AgeClass)   #  CV=T
+
+MVA.cv(pca.dat, data$Infectionclass,model="LDA", scale=T)
+par(mfrow=c(1,2))
+MVA.plot(ldaAge, fac = data$AgeClass, 
+         xlab = "Axis 1", ylab = "Axis 2",
+         col=c("#427EF6", "#7C3918", "#FF9100"),
+         legend=F, legend.cex=0.9, legend.pos="topleft")
+MVA.plot(ldaAge,"corr", xlab="Axis 1", ylab="Axis 2")
+```
+
+```{r}
+anova(betadisper(dist(pca.dat),data$AgeClass2))
+
+ldaAge=lda(pca.dat, data$AgeClass2)   #  CV=T
+
+MVA.cv(pca.dat, data$Infectionclass,model="LDA", scale=T)
+par(mfrow=c(1,2))
+MVA.plot(ldaAge, fac = data$AgeClass, 
+         xlab = "Axis 1", ylab = "Axis 2",
+         col=c("#427EF6", "#7C3918", "#FF9100"),
+         legend=F, legend.cex=0.9, legend.pos="topleft")
+MVA.plot(ldaAge,"corr", xlab="Axis 1", ylab="Axis 2")
 ```
 
 #### C.) Linear models 
+
+*In all linear models, infection status is represented as a factor with two levels (Infected vs Uninfected) to balance sample sizes*
 
 ##### Test 1: *Heterophiles are significantly higher in infected individuals across species*
 
@@ -288,8 +340,6 @@ heterophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Het
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("Heterophiles [%]") +
   xlab("Leucocytozoon infection") +
@@ -300,9 +350,58 @@ heterophiles_plot
 
 
 ```{r}
-lm(Heterophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(Heterophiles_percent ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "Heterophiles_percent ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
+
+```{r, echo=F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <- data.frame(param = "Heterophiles",
+           Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+           SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+           Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+           SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+           t = model.summary$coefficients[2,3],
+           p = model.summary$coefficients[2,4])
+```
+
 
 ##### Test 2: *Lymphocytes are significantly lower in infected individuals across species*
 
@@ -322,15 +421,65 @@ lymphocytes_plot <- ggplot(data,
   stat_n_text() +
   facet_wrap(~Species) 
 lymphocytes_plot
-
-# with(data, plot(Age, Heterophiles_percent)) marginal reduction with age
 ```
 
 
 ```{r}
-lm(Lymphocytes_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(Lymphocytes_percent ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "Lymphocytes_percent ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
+
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "Lymphocytes",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
+
 
 ##### Test 3: *BA is significantly higher in infected individuals across species*
 
@@ -349,14 +498,62 @@ BA_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = BA)) +
   stat_n_text() +
   facet_wrap(~Species) 
 BA_plot
-
-# with(data, plot(Age, Heterophiles_percent)) marginal reduction with age
 ```
 
 
 ```{r}
-lm(BA ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(BA ~ Infection_binomial + Sex + Age + Species, data) 
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "BA ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "BA",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
 ```
 
 ##### Test 4: *AST is significantly higher in infected individuals across species*
@@ -368,22 +565,68 @@ AST_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = AST)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("AST [%]") +
   xlab("Leucocytozoon infection") +
   stat_n_text() +
   facet_wrap(~Species) 
 AST_plot
-
-# with(data, plot(Age, Heterophiles_percent)) marginal reduction with age
 ```
 
 
 ```{r}
-lm(AST ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(AST ~ Infection_binomial + Sex + Age + Species, data) 
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "AST ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "AST",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
 ```
 
 ##### Test 5: *LDH is significantly higher in infected individuals across species*
@@ -395,8 +638,6 @@ LDH_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = LDH)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("LDH [%]") +
   xlab("Leucocytozoon infection") +
@@ -406,8 +647,58 @@ LDH_plot
 ```
 
 ```{r}
-lm(LDH ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(LDH ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "LDH ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "LDH",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
 ```
 
 ##### Test 6: *Eosinophiles is significantly higher in infected individuals across species*
@@ -419,8 +710,6 @@ Eosinophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Eos
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("Eosinophiles [%]") +
   xlab("Leucocytozoon infection") +
@@ -430,13 +719,61 @@ Eosinophiles_plot
 ```
 
 ```{r}
-lm(Eosinophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(Eosinophiles_percent ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "Eosinophiles ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "Eosinophiles",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
 ```
 
 ##### Test 7: *Monocytes do not differ between infeceted and uninfected individuals*
-
-*Monocytes are invariant in buteo buteo*
 
 ```{r}
 Monocytes_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Monocytes_percent)) +
@@ -445,8 +782,6 @@ Monocytes_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Monocy
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("Monocytes [%]") +
   xlab("Leucocytozoon infection") +
@@ -456,8 +791,59 @@ Monocytes_plot
 ```
 
 ```{r}
-lm(Monocytes_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(Monocytes_percent ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "Monocytes_percent ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "Monocytes",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
 ```
 
 ##### Test 8: *Basophiles do not differ between infeceted and uninfected individuals*
@@ -469,8 +855,6 @@ Basophiles_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Basop
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("Basophiles [%]") +
   xlab("Leucocytozoon infection") +
@@ -480,10 +864,60 @@ Basophiles_plot
 ```
 
 ```{r}
-lm(Basophiles_percent ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(Basophiles_percent ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "Basophiles_percent ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
 
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "Basophiles",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
 
 ##### Test 9: *AP do not differ between infeceted and uninfected individuals*
 
@@ -494,8 +928,6 @@ AP_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = AP)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("AP") +
   xlab("Leucocytozoon infection") +
@@ -505,10 +937,60 @@ AP_plot
 ```
 
 ```{r}
-lm(AP ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(AP ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "AP ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
 
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "AP",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
 
 ##### Test 10: *gGT do not differ between infeceted and uninfected individuals*
 
@@ -519,8 +1001,6 @@ gGT_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = gGT)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("gGT") +
   xlab("Leucocytozoon infection") +
@@ -530,10 +1010,59 @@ gGT_plot
 ```
 
 ```{r}
-lm(gGT ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
-```
+model <- lm(gGT ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
 
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "gGT ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "gGT",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
 
 ##### Test 11: *CHE do not differ between infeceted and uninfected individuals*
 
@@ -544,8 +1073,6 @@ CHE_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = CHE)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("CHE") +
   xlab("Leucocytozoon infection") +
@@ -555,12 +1082,64 @@ CHE_plot
 ```
 
 ```{r}
-lm(CHE ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(CHE ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "CHE ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
 
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
 
-##### Test 12: *GLDH do not differ between infeceted and uninfected individuals*
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "CHE",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
+
+##### Test 12: *GLDH do not differ between infected and uninfected individuals*
+
+Spurious!
 
 ```{r}
 GLDH_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = GLDH)) +
@@ -569,8 +1148,6 @@ GLDH_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = GLDH)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("GLDH") +
   xlab("Leucocytozoon infection") +
@@ -580,10 +1157,60 @@ GLDH_plot
 ```
 
 ```{r}
-lm(GLDH ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(GLDH ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "GLDH ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
 
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "GLDH",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
 
 ##### Test 13: *CK do not differ between infeceted and uninfected individuals*
 
@@ -594,8 +1221,6 @@ CK_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = CK)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("GLDH") +
   xlab("Leucocytozoon infection") +
@@ -605,10 +1230,60 @@ CK_plot
 ```
 
 ```{r}
-lm(CK ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(CK ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "CK ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
 
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "CK",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
 
 ##### Test 14: *ALB do not differ between infeceted and uninfected individuals*
 
@@ -619,8 +1294,6 @@ ALB_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = ALB)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("ALB") +
   xlab("Leucocytozoon infection") +
@@ -630,10 +1303,60 @@ ALB_plot
 ```
 
 ```{r}
-lm(ALB ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <-lm(ALB ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "ALB ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
 
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "ALB",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
 
 ##### Test 15: *TP do not differ between infeceted and uninfected individuals*
 
@@ -644,8 +1367,6 @@ TP_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = TP)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("TP") +
   xlab("Leucocytozoon infection") +
@@ -655,8 +1376,59 @@ TP_plot
 ```
 
 ```{r}
-lm(TP ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(TP ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "TP ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "TP",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
 ```
 
 ##### Test 16: *Ca do not differ between infeceted and uninfected individuals*
@@ -668,8 +1440,6 @@ Ca_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = Ca)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("Ca") +
   xlab("Leucocytozoon infection") +
@@ -679,8 +1449,59 @@ Ca_plot
 ```
 
 ```{r}
-lm(Ca ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(Ca ~ Infection_binomial + Sex + Age + Species, data) 
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "CA ~ Infection_binomial + Sex + Age + Species") 
+model.plot
+```
+
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "CA",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
 ```
 
 ##### Test 17: *P do not differ between infeceted and uninfected individuals*
@@ -692,8 +1513,6 @@ P_plot <- ggplot(data, aes(x = as.factor(Infection_binomial), y = P)) +
   theme_classic() +
   theme(text = element_text(size = 12),
         panel.border = element_blank(),
-        #strip.background = element_rect(fill = "white", colour = "white"),
-        #strip.text = element_text(colour = 'white'),
         plot.margin = grid::unit(c(2,2,2,2), 'mm')) +
   ylab("P") +
   xlab("Leucocytozoon infection") +
@@ -703,6 +1522,62 @@ P_plot
 ```
 
 ```{r}
-lm(P ~ Infection_binomial + Sex + Age + Species, data) %>% 
-summary()
+model <- lm(P ~ Infection_binomial + Sex + Age + Species, data)
+tab_model(model,
+          show.stat = T,
+          string.est = "Estimate",
+          string.ci = "95% CI",
+          string.stat = "z",
+          string.se = "SE",
+          show.se = T,
+          transform = NULL,
+          collapse.ci = T)
+
+model.plot <- 
+  plot_model(model = model,
+             sort.est = TRUE,
+             transform = NULL,
+             title = "",
+             ci.lvl = .95,
+             ci.style = "whisker",
+             dot.size = 3,
+             line.size = 1.2,
+  ) +
+  theme_classic(base_size = 12) +
+  geom_hline(yintercept = 0, lty = "dashed") +
+  ylab("Effect size") + xlab("Model parameter") +
+  ggtitle(label = "P ~ Infection_binomial + Sex + Age + Species") 
+model.plot
 ```
+
+```{r, echo=FALSE, eval = F}
+## model predictions
+(df.pred <- data.frame(
+  Infection_binomial = rep(as.factor(0:1), 2),
+  Species = rep(c("Milvus milvus"), each = 4),
+  Sex = rep(c(rep("Female", 2), rep("Male", 2)),1),
+  Age = 0))
+
+fitted.values <- predict(model, df.pred, se.fit = T, interval = "confidence")
+means <- fitted.values$fit[,1]
+se <- fitted.values$se.fit
+df.pred <- cbind(df.pred, means, se)
+
+model.summary <- summary(model)
+
+summary.table <-
+  rbind(summary.table, data.frame(
+    param = "P",
+    Mean.0 = mean(df.pred$means[df.pred$Infection_binomial == 0]),
+    SE.0 = mean(df.pred$se[df.pred$Infection_binomial == 0]),
+    Mean.1 = mean(df.pred$means[df.pred$Infection_binomial == 1]),
+    SE.1 = mean(df.pred$se[df.pred$Infection_binomial == 1]),
+    t = model.summary$coefficients[2,3],
+    p = model.summary$coefficients[2,4])
+  )
+```
+
+```{r, echo=FALSE, eval=F}
+write.csv(summary.table, file = "data/means.per.parameter.milvus.csv")
+```
+
