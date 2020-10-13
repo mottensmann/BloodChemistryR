@@ -234,7 +234,8 @@ indinfplot <- ggplot(data = pca.coords,
   geom_hline(yintercept = 0, lty = 2) +
   geom_vline(xintercept = 0, lty = 2) +
   scale_color_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
-  scale_fill_manual(values=c("#427EF6", "#7C3918", "#FF9100")) +
+  scale_fill_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
+#  scale_fill_manual(values=c("#427EF6", "#7C3918", "#FF9100")) +
   theme_classic() +
   theme(legend.position = "bottom",
         legend.text = element_text(size = 12),
