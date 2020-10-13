@@ -125,11 +125,14 @@ First, we use a principal component analysis as unsupervised clustering approach
 
 ```{r}
 ## Subset the raw data for PCA
+## "GLDH": Essentially uniform, below detection threshold
+## "Basophiles_percent": extremely rare, two factor levels (0, 1)
 pca.dat <- 
   data[,
-       c("Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent", "Heterophiles_percent",
-         "H_L_ratio", "Basophiles_percent", "Eosinophiles_percent", "AP", "AST",
-         "gGT", "CHE", "GLDH", "BA", "LDH", "CK", "ALB",  "TP")] %>% 
+       c("Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent",
+         "Heterophiles_percent",
+         "H_L_ratio", "Eosinophiles_percent", "AP", "AST",
+         "gGT", "CHE", "BA", "LDH", "CK", "ALB",  "TP")] %>% 
   ## mean centering of variables
   scale() %>% 
   na.omit()
@@ -206,6 +209,7 @@ indplot <-
   geom_hline(yintercept = 0, lty = 2) +
   geom_vline(xintercept = 0, lty = 2) +
   scale_color_manual(values=c("#427EF6", "#7C3918", "#FF9100")) +
+  scale_fill_manual(values=c("#427EF6", "#7C3918", "#FF9100")) +
   theme_classic()+
   theme(legend.position = "bottom",
         legend.text = element_text(size = 12),
@@ -230,6 +234,7 @@ indinfplot <- ggplot(data = pca.coords,
   geom_hline(yintercept = 0, lty = 2) +
   geom_vline(xintercept = 0, lty = 2) +
   scale_color_manual(values = c("#A50F15","#FB6A4A","#FCAE91")) +
+  scale_fill_manual(values=c("#427EF6", "#7C3918", "#FF9100")) +
   theme_classic() +
   theme(legend.position = "bottom",
         legend.text = element_text(size = 12),
@@ -277,23 +282,35 @@ MVA.plot(ldaSpecies, "corr", xlab = "Axis 1", ylab = "Axis 2")
 ##### LDA constrained by Infection class
 
 ```{r}
+par(mfrow = c(2, 2))
+for(i in dimnames(pca.dat)[[2]]) {
+  qqnorm(pca.dat[,i]); qqline(pca.dat[,i], col = 3)
+}
+
 # Checking normal multivariate distribution
 qqPlot(pca.dat[,1])
+qqPlot(pca.dat[,2])
+
 anova(betadisper(dist(pca.dat),data$Infectionclass))
+anova(betadisper(dist(pca.dat),data$Infection_binomial))
 
 ldaInfclass = lda(pca.dat, data$Infectionclass)   #  CV=T
+ldaInfclass = lda(pca.dat, data$Infection_binomial)   #  CV=T
 
 MVA.cv(pca.dat, data$Infectionclass, model="LDA", scale=T)
 
+buteo <- which(data$Species == "Buteo buteo")
+MVA.cv(pca.dat[buteo,], data$Infectionclass[buteo], model="LDA", scale=T)
+
 par(mfrow=c(1,2))
-MVA.plot(ldaInfclass, fac = data$Infectionclass,
+MVA.plot(ldaInfclass, fac = data$Infection_binomial,
          xlab = "Axis 1", 
          ylab = "Axis 2",
-         col = c("#427EF6", "#7C3918", "#FF9100"),
+         col = c("#427EF6", "#7C3918"),# "#FF9100"),
          legend = F,
          legend.cex = 0.9, 
-         legend.pos = "topleft",
-         legend.lab = c("High Infection", "Low Infection","No Infection"))
+         legend.pos = "topleft")
+         #legend.lab = c("High Infection", "Low Infection","No Infection"))
 MVA.plot(ldaInfclass,"corr", xlab = "Axis 1", ylab = "Axis 2")
 ```
 
