@@ -8,7 +8,7 @@ header-includes:
 - \newcommand{\elandscape}{\end{landscape}}
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, fig.align='center', tidy=TRUE, strip.white=TRUE, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -48,7 +48,6 @@ install.packages("vegan")
 Afterwards, make these packages available with the `library` function
 
 ```{r, comment="Load packages", message=FALSE, warning=FALSE}
-rm(list = ls())
 library(ade4)
 library(chron)
 library(corrplot)
@@ -89,10 +88,10 @@ For the analyses some data wrangling is needed first. Prior to analysis, all con
 data <- 
   mutate(data,
          Species = factor(Species, levels = c("Buteo buteo", "Milvus milvus", "Accipiter gentilis"))) %>% 
-  ## code a binomial factor to describe infection levels as infected vs uninfected
+  ## code prevelance as binomial factor, with infected = 1
   mutate(Infection_binomial = ifelse(Infection_intensity == 0, 0, 1) %>%
                  as.factor()) %>% 
-  ## code infection levels in three classes
+  ## code infection intensity as factor with 3 levels
   mutate(Infectionclass = case_when(
   Infection_intensity == 0 ~ "Uninfected",
   Infection_intensity %in% 1:2 ~ "Infected (low)",
@@ -117,16 +116,17 @@ data <-
   as.numeric())
 ```
 
+
 ### Analyses
+
+Two variables, `GLDH` and `Basophiles_percent` are essentially uniform, and values are identical for all individuals of some groups (e.g. Species X Infection level). Hence, these variables are omitted from PCA and LDA models. 
 
 #### A.) PCA
 
-First, we use a principal component analysis as unsupervised clustering approach
+First, we use a principal component analysis as unsupervised clustering approach to distinguish between infection intensity levels. 
 
 ```{r}
 ## Subset the raw data for PCA
-## "GLDH": Essentially uniform, below detection threshold
-## "Basophiles_percent": extremely rare, two factor levels (0, 1)
 pca.dat <- 
   data[,
        c("Leukocyte_count", "Lymphocytes_percent", "Monocytes_percent",
@@ -138,18 +138,15 @@ pca.dat <-
   na.omit()
 ```
 
-Visualising correlation matrix to check for collinearity issues
+##### Visualising correlation matrix to check for collinearity issues
 
-```{r}
+```{r, fig.cap="Fig 1. Correlation matrix of numeric variables. Insignifcant correlation (p > 0.05) are crossed."}
 ggcorrplot(cor(pca.dat), p.mat = cor_pmat(pca.dat), hc.order=TRUE, type='lower')
 ```
 
-The above plot shows that there are a few issues regarding collinear variables. Most evident is this for the ratio between Heterocytes and Lymphocytes.
+The above plot (Fig 1) shows that there are a few issues regarding collinear variables. For the the ratio between Heterocytes and Lymphocytes this is most evident (and expected).
 
-```{r}
-## removing H:L ratio
-#pca.dat <- subset(pca.dat, select = -c(H_L_ratio))
-
+```{r, fig.cap="Fig 2. Loading of variables on PCA axes 1 and 2"}
 ## Defining function for circular plots
 circleFun <- function(center = c(0,0),diameter = 1, npoints = 100){
   r = diameter / 2
@@ -178,12 +175,15 @@ vars.p <-  ggplot() +
   geom_path(data = circ,aes(x,y), lty = 2, color = "grey", alpha = 0.7)+
   geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9)+
   geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9)+
-  geom_segment(data = pca.vars, aes(x = 0, xend = Dim.1, y = 0, yend = Dim.2),
+  geom_segment(data = pca.vars,
+               aes(x = 0, xend = Dim.1, y = 0, yend = Dim.2,
+                   alpha = .6),
                arrow = arrow(length = unit(0.025, "npc"), type = "open"), 
                lwd = 1)+ 
   geom_text_repel(data = pca.vars, 
                   aes(x = Dim.1*1.15, y =  Dim.2*1.15, 
-                      label = row.names(pca.vars)), 
+                      label = row.names(pca.vars),
+                      alpha = .6), 
                   color = "blue",
                   size = 5)+
   xlab(paste0("PC 1 (", round(pca$eig[1,2],2),"%)"))+ 
@@ -196,10 +196,13 @@ vars.p <-  ggplot() +
 vars.p
 ```
 
-##### Plot PCA individual with species labels
+##### Plot PCA results grouped by secies
 
-```{r}
-indplot <- 
+Visualising the PCA with species as a grouping variable shows considerable overlap, especially between *Buteo buteo* and *Milvus milvus*.
+
+
+```{r, fig.cap="Fig 3. PCA using species as grouping factor"}
+spec.plot <- 
   ggplot(pca.coords, aes(x = pc1, y = pc2, color = data$Species)) +
   geom_point(color = 'black', size = 4.5) +
   geom_point(size = 4) +
@@ -219,12 +222,15 @@ indplot <-
         panel.border = element_rect(fill = "transparent")) +
     stat_ellipse(geom = "polygon", aes(fill = data$Species),
                  alpha = 0.2, show.legend = FALSE, level = 0.95)
+spec.plot
 ```
 
-##### Plot PCA individuals with infection intensity labels 
+##### Plot PCA results grouped by infection intensity 
 
-```{r}
-indinfplot <- ggplot(data = pca.coords, 
+Plotting PCA results grouped by infection intenstiy pooled for all three species shows considerable overlap between groups. 
+
+```{r, fig.cap="Fig 4. PCA using infection intensity as grouping factor"}
+inf.plot <- ggplot(data = pca.coords, 
                      aes(x = pc1, y = pc2, color = as.factor(data$Infectionclass))) +
   geom_point(color='black',size=4.5) +
   geom_point(size = 4) +
@@ -246,7 +252,8 @@ indinfplot <- ggplot(data = pca.coords,
   stat_ellipse(geom ="polygon", aes(color = as.factor(data$Infectionclass)), 
                alpha = 0.05, show.legend = FALSE, level = 0.95, size=0.7)
 
-indplot/indinfplot|vars.p + plot_layout(ncol = 1)
+inf.plot
+#spec.plot/inf.plot|vars.p + plot_layout(ncol = 1)
 ```
 
 
@@ -254,13 +261,16 @@ indplot/indinfplot|vars.p + plot_layout(ncol = 1)
 
 Linear discriminant analysis as supervised clustering method.
 
-```{r}
+```{r, fig.cap="Fig 5. Q-Q plots of all numeric variables"}
 # Checking normal multivariate distribution
-# par(mfrow = c(2, 2))
-# for(i in dimnames(pca.dat)[[2]]) {
-#   qqnorm(pca.dat[,i]); qqline(pca.dat[,i], col = 3)
-# }
+par(mfrow = c(3, 5))
+for(i in dimnames(pca.dat)[[2]]) {
+  qqnorm(pca.dat[,i]); qqline(pca.dat[,i], col = 3)
+}
+```
 
+
+```{r, warning=F, message=F}
 # Checking homogeneity of the matrix variance - covariance
 anova(betadisper(dist(pca.dat),data$Species))
 
@@ -272,7 +282,7 @@ anova(betadisper(dist(pca.dat),data$Species))
 MVA.cv(pca.dat, data$Species, model = "LDA", scale=T)
 ```
 
-```{r}
+```{r, fig.cap="Fig 6. LDA visualised by species"}
 par(mfrow = c(1,2))
 MVA.plot(ldaSpecies, fac = data$Species, xlab = "LD 1", ylab = "LD 2",
          col = c("#427EF6", "#7C3918", "#FF9100"), legend = F, legend.cex = 0.5,
@@ -282,16 +292,8 @@ MVA.plot(ldaSpecies, "corr", xlab = "Axis 1", ylab = "Axis 2")
 ```
 ##### LDA constrained by Infection class
 
-```{r}
-# Checking normal multivariate distribution
-
-par(mfrow = c(2, 2))
-for(i in dimnames(pca.dat)[[2]]) {
-  qqnorm(pca.dat[,i]); qqline(pca.dat[,i], col = 3)
-}
-
+```{r, fig.cap="Fig 7. LDA with prevelance as response. All speices pooled", warning=FALSE}
 # Checking for homogeneity within the variance-covariance matrix (equivalent of homoscedasticity of univariate test)
-
 anova(betadisper(dist(pca.dat),data$Infectionclass))
 anova(betadisper(dist(pca.dat),data$Infection_binomial))
 
@@ -316,8 +318,7 @@ MVA.plot(ldaInfclass, fac = data$Infection_binomial,
 MVA.plot(ldaInfclass,"corr", xlab = "Axis 1", ylab = "Axis 2")
 ```
 
-```{r}
-
+```{r, fig.cap="Fig 8. LDA with prevelance as response. Buteo buteo only", warning=F}
 # Infection (0/1) in Buteo buteo
 
 buteo <- which(data$Species == "Buteo buteo")
@@ -337,11 +338,9 @@ MVA.plot(ldaInfclass_buteo, fac = data$Infection_binomial[buteo],
          legend.pos = "topright",
          legend.lab = c("Uninfected", "Infected"))
 MVA.plot(ldaInfclass_buteo,"corr", xlab = "Axis 1", ylab = "Axis 2")
-
 ```
 
-``` {r}
-
+```{r, fig.cap="Fig 9. LDA with prevelance as response. Accipiter gentilis only", warning=FALSE}
 # Infection (0/1) in Accipiter gentilis
 
 Agentilis <- which(data$Species == "Accipiter gentilis")
@@ -363,8 +362,7 @@ MVA.plot(ldaInfclass_agentilis, fac = data$Infection_binomial[Agentilis],
 MVA.plot(ldaInfclass_agentilis,"corr", xlab = "Axis 1", ylab = "Axis 2")
 ```
 
-```{r}
-
+```{r, fig.cap="Fig 10. LDA with prevelance as response. Milvus milvus only", warning=FALSE}
 # Infection (0/1) in Milvus milvus
 
 milvus <- which(data$Species == "Milvus milvus")
@@ -391,7 +389,9 @@ MVA.plot(ldaInfclass_milvus,"corr", xlab = "Axis 1", ylab = "Axis 2")
 
 ##### LDA constrained by Age classes Three weeks / A month / A month+
 
-```{r}
+*Only explorative*
+
+```{r, warning=FALSE}
 anova(betadisper(dist(pca.dat),data$AgeClass))
 
 ldaAge=lda(pca.dat, data$AgeClass)   #  CV=T
@@ -404,9 +404,12 @@ MVA.plot(ldaAge, fac = data$AgeClass,
          legend=F, legend.cex=0.9, legend.pos="topleft")
 MVA.plot(ldaAge,"corr", xlab="Axis 1", ylab="Axis 2")
 ```
+
 ##### LDA constrained by Age classes first, second and third third of their nestling period
 
-```{r}
+*Only explorative*
+
+```{r, warning=FALSE}
 anova(betadisper(dist(pca.dat),data$AgeClass2))
 
 ldaAge=lda(pca.dat, data$AgeClass2)   #  CV=T
@@ -453,7 +456,8 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
-
+```
+```{r, echo=FALSE}
 model.plot <- 
   plot_model(model = model,
              sort.est = TRUE,
@@ -468,7 +472,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "Heterophiles_percent ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=F}
@@ -528,7 +532,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
 
+```{r, echo=FALSE}
 model.plot <- 
   plot_model(model = model,
              sort.est = TRUE,
@@ -543,7 +549,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "Lymphocytes_percent ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -605,6 +611,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -620,7 +629,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "BA ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 ```{r, echo=FALSE, eval = F}
 ## model predictions
@@ -678,7 +687,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
 
+```{r, echo=FALSE}
 model.plot <- 
   plot_model(model = model,
              sort.est = TRUE,
@@ -693,8 +704,9 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "AST ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
+
 ```{r, echo=FALSE, eval = F}
 ## model predictions
 (df.pred <- data.frame(
@@ -750,6 +762,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -765,8 +780,9 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "LDH ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
+
 ```{r, echo=FALSE, eval = F}
 ## model predictions
 (df.pred <- data.frame(
@@ -822,6 +838,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -837,8 +856,9 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "Eosinophiles ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
+
 ```{r, echo=FALSE, eval = F}
 ## model predictions
 (df.pred <- data.frame(
@@ -894,6 +914,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -909,7 +932,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "Monocytes_percent ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -967,6 +990,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -982,7 +1008,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "Basophiles_percent ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1040,6 +1066,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1055,7 +1084,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "AP ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1113,6 +1142,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1128,8 +1160,9 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "gGT ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
+
 ```{r, echo=FALSE, eval = F}
 ## model predictions
 (df.pred <- data.frame(
@@ -1185,6 +1218,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1200,7 +1236,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "CHE ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1260,6 +1296,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1275,7 +1314,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "GLDH ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1333,6 +1372,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1348,7 +1390,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "CK ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1406,6 +1448,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1421,7 +1466,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "ALB ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1479,6 +1524,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1494,7 +1542,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "TP ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1552,6 +1600,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1567,7 +1618,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "CA ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1625,6 +1676,9 @@ tab_model(model,
           show.se = T,
           transform = NULL,
           collapse.ci = T)
+```
+
+```{r, echo=FALSE}
 
 model.plot <- 
   plot_model(model = model,
@@ -1640,7 +1694,7 @@ model.plot <-
   geom_hline(yintercept = 0, lty = "dashed") +
   ylab("Effect size") + xlab("Model parameter") +
   ggtitle(label = "P ~ Infection_binomial + Sex + Age + Species") 
-model.plot
+#model.plot
 ```
 
 ```{r, echo=FALSE, eval = F}
@@ -1673,4 +1727,3 @@ summary.table <-
 ```{r, echo=FALSE, eval=F}
 write.csv(summary.table, file = "data/means.per.parameter.milvus.csv")
 ```
-
