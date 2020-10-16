@@ -283,14 +283,14 @@ MVA.plot(ldaSpecies, "corr", xlab = "Axis 1", ylab = "Axis 2")
 ##### LDA constrained by Infection class
 
 ```{r}
+# Checking normal multivariate distribution
+
 par(mfrow = c(2, 2))
 for(i in dimnames(pca.dat)[[2]]) {
   qqnorm(pca.dat[,i]); qqline(pca.dat[,i], col = 3)
 }
 
-# Checking normal multivariate distribution
-qqPlot(pca.dat[,1])
-qqPlot(pca.dat[,2])
+# Checking for homogeneity within the variance-covariance matrix (equivalent of homoscedasticity of univariate test)
 
 anova(betadisper(dist(pca.dat),data$Infectionclass))
 anova(betadisper(dist(pca.dat),data$Infection_binomial))
@@ -298,21 +298,95 @@ anova(betadisper(dist(pca.dat),data$Infection_binomial))
 ldaInfclass = lda(pca.dat, data$Infectionclass)   #  CV=T
 ldaInfclass = lda(pca.dat, data$Infection_binomial)   #  CV=T
 
-MVA.cv(pca.dat, data$Infectionclass, model="LDA", scale=T)
+# Infection (0/1) in the three species
 
-buteo <- which(data$Species == "Buteo buteo")
-MVA.cv(pca.dat[buteo,], data$Infectionclass[buteo], model="LDA", scale=T)
+MVA.cv(pca.dat, data$Infection_binomial, model="LDA", scale=T)
 
-par(mfrow=c(1,2))
+par(mfrow = c(1,2))
 MVA.plot(ldaInfclass, fac = data$Infection_binomial,
          xlab = "Axis 1", 
          ylab = "Axis 2",
-         col = c("#427EF6", "#7C3918"),# "#FF9100"),
-         legend = F,
-         legend.cex = 0.9, 
-         legend.pos = "topleft")
-         #legend.lab = c("High Infection", "Low Infection","No Infection"))
+         main="LDA - Blood chemistry in uninfected \n and infected nestlings (all species)",
+         col = c("#427EF6", "#7C3918"),
+         legend = T,
+         legend.cex = 0.9,
+         legend.pos = "topright",
+         legend.lab = c("Uninfected", "Infected")) # need to adjust the size of the box 
+
 MVA.plot(ldaInfclass,"corr", xlab = "Axis 1", ylab = "Axis 2")
+```
+
+```{r}
+
+# Infection (0/1) in Buteo buteo
+
+buteo <- which(data$Species == "Buteo buteo")
+
+MVA.cv(pca.dat[buteo,], data$Infection_binomial[buteo], model="LDA", scale=T)
+
+ldaInfclass_buteo = lda(pca.dat[buteo,], data$Infection_binomial[buteo])   #  CV=T
+
+par(mfrow = c(1,2))
+MVA.plot(ldaInfclass_buteo, fac = data$Infection_binomial[buteo],
+         xlab = "Axis 1", 
+         ylab = "Axis 2",
+         main="LDA - Blood chemistry in uninfected \n and infected nestlings (Buteo buteo)",
+         col = c("#427EF6", "#7C3918"),# "#FF9100"),
+         legend = T,
+         legend.cex = 0.9, 
+         legend.pos = "topright",
+         legend.lab = c("Uninfected", "Infected"))
+MVA.plot(ldaInfclass_buteo,"corr", xlab = "Axis 1", ylab = "Axis 2")
+
+```
+
+``` {r}
+
+# Infection (0/1) in Accipiter gentilis
+
+Agentilis <- which(data$Species == "Accipiter gentilis")
+
+MVA.cv(pca.dat[Agentilis,], data$Infection_binomial[Agentilis], model="LDA", scale=T)
+
+ldaInfclass_agentilis = lda(pca.dat[Agentilis,], data$Infection_binomial[Agentilis])   #  CV=T
+
+par(mfrow = c(1,2))
+MVA.plot(ldaInfclass_agentilis, fac = data$Infection_binomial[Agentilis],
+         main="LDA - Blood chemistry in uninfected \n and infected nestlings (Accipiter gentilis)",
+         xlab = "Axis 1", 
+         ylab = "Axis 2",
+         col = c("#427EF6", "#7C3918"),# "#FF9100"),
+         legend = T,
+         legend.cex = 0.9, 
+         legend.pos = "topleft",
+         legend.lab = c("Uninfected", "Infected"))
+MVA.plot(ldaInfclass_agentilis,"corr", xlab = "Axis 1", ylab = "Axis 2")
+```
+
+```{r}
+
+# Infection (0/1) in Milvus milvus
+
+milvus <- which(data$Species == "Milvus milvus")
+
+MVA.cv(pca.dat[milvus,], data$Infection_binomial[milvus], model="LDA", scale=T)
+
+ldaInfclass_milvus = lda(pca.dat[milvus,], data$Infection_binomial[milvus])   #  CV=T
+
+par(mfrow = c(1,2))
+MVA.plot(ldaInfclass_milvus, fac = data$Infection_binomial[milvus],
+         main="LDA - Blood chemistry in uninfected \n and infected nestlings (Milvus milvus)",
+         xlab = "Axis 1", 
+         ylab = "Axis 2",
+         col = c("#427EF6", "#7C3918"),# "#FF9100"),
+         legend = T,
+         legend.cex = 0.9, 
+         legend.pos = "topleft",
+         legend.lab = c("Uninfected", "Infected"))
+
+         #legend.lab = c("High Infection", "Low Infection","No Infection"))
+MVA.plot(ldaInfclass_milvus,"corr", xlab = "Axis 1", ylab = "Axis 2")
+
 ```
 
 ##### LDA constrained by Age classes Three weeks / A month / A month+
@@ -322,7 +396,7 @@ anova(betadisper(dist(pca.dat),data$AgeClass))
 
 ldaAge=lda(pca.dat, data$AgeClass)   #  CV=T
 
-MVA.cv(pca.dat, data$Infectionclass,model="LDA", scale=T)
+MVA.cv(pca.dat, data$AgeClass,model="LDA", scale=T)
 par(mfrow=c(1,2))
 MVA.plot(ldaAge, fac = data$AgeClass, 
          xlab = "Axis 1", ylab = "Axis 2",
@@ -330,6 +404,7 @@ MVA.plot(ldaAge, fac = data$AgeClass,
          legend=F, legend.cex=0.9, legend.pos="topleft")
 MVA.plot(ldaAge,"corr", xlab="Axis 1", ylab="Axis 2")
 ```
+##### LDA constrained by Age classes first, second and third third of their nestling period
 
 ```{r}
 anova(betadisper(dist(pca.dat),data$AgeClass2))
